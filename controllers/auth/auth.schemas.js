@@ -50,11 +50,11 @@ export const signupSchema = Joi.object({
     phone: phoneSchema.required(),
     password: Joi.string().min(6).optional().messages({ 'string.min': 'Password must be at least 6 characters' }),
     // role-specific
-    businessName: Joi.string().trim().min(2).optional().messages({ 'string.min': 'businessName must be at least 2 characters' })
+    businessName: Joi.string().trim().min(2).empty('').optional().messages({ 'string.min': 'businessName must be at least 2 characters' })
       .when('role', { is: 'seller-co', then: Joi.required().messages({ 'any.required': 'businessName is required for solar-seller-company' }) }),
-    gstin: Joi.string().trim().uppercase().optional()
+    gstin: Joi.string().trim().uppercase().empty('').optional()
       .when('role', { is: 'seller-co', then: Joi.required().messages({ 'any.required': 'gstin is required for solar-seller-company verification' }) }),
-    licenseNumber: Joi.string().trim().min(2).optional().messages({ 'string.min': 'licenseNumber must be at least 2 characters' })
+    licenseNumber: Joi.string().trim().min(2).empty('').optional().messages({ 'string.min': 'licenseNumber must be at least 2 characters' })
       .when('role', { is: 'install-co', then: Joi.required().messages({ 'any.required': 'licenseNumber is required for installer-company verification' }) }),
   });
 
