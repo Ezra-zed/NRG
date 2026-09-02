@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { z } from 'zod';
+import Joi from 'joi';
 import {
   getAdminDashboard,
   verifyCompany,
@@ -18,8 +18,8 @@ const router = Router();
 
 const verificationBadges = ['GST Verified', 'Business Verified', 'Installer Verified', 'Top Rated'];
 
-const verifySchema = z.object({
-  verificationBadges: z.array(z.enum(verificationBadges)).default([]),
+const verifySchema = Joi.object({
+  verificationBadges: Joi.array().items(Joi.string().valid(...verificationBadges)).default([]),
 });
 
 /**

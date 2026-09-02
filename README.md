@@ -6,7 +6,7 @@ Production-ready Node.js (ES Modules) + Express + MongoDB (Mongoose) API.
 
 - **Node.js** latest LTS with `"type": "module"` (import/export everywhere — no `require`)
 - **Express.js** routing · **MongoDB + Mongoose** ODM · **dotenv**
-- **zod** input validation (middleware-based)
+- **Joi** input validation (middleware-based)
 - **JWT auth** with three sign-in strategies (`O-auth`, `JWT-auth`, `no-password`)
 - Centralized error handler (Mongoose `CastError`, `ValidationError`, duplicate-key `11000`)
 - `morgan` request logging, `cors`, `asyncHandler` wrapper

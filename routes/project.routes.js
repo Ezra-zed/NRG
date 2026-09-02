@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { z } from 'zod';
+import Joi from 'joi';
 import { createProjectRequest, getProjectQuotes } from '../controllers/project.controller.js';
 import { validate } from '../middlewares/validate.middleware.js';
 import asyncHandler from '../utils/asyncHandler.js';
@@ -10,15 +10,15 @@ import asyncHandler from '../utils/asyncHandler.js';
 
 const router = Router();
 
-const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Must be a valid 24-char ObjectId');
+const objectId = Joi.string().pattern(/^[0-9a-fA-F]{24}$/).messages({ 'string.pattern.base': 'Must be a valid 24-char ObjectId' });
 
-const projectRequestSchema = z.object({
+const projectRequestSchema = Joi.object({
   customerId: objectId.optional(),
-  location: z.string().trim().min(2, 'location is required'),
-  monthlyBill: z.coerce.number().min(0).optional(),
-  propertyType: z.enum(['residential', 'commercial', 'industrial', 'other']).optional(),
-  systemPreference: z.enum(['on-grid', 'off-grid', 'hybrid-grid']).optional(),
-  budget: z.coerce.number().min(0).optional(),
+  location: Joi.string().trim().min(2).required().messages({ 'string.min': 'location is required' }),
+  monthlyBill: Joi.number().min(0).optional(),
+  propertyType: Joi.string().valid('residential', 'commercial', 'industrial', 'other').optional(),
+  systemPreference: Joi.string().valid('on-grid', 'off-grid', 'hybrid-grid').optional(),
+  budget: Joi.number().min(0).optional(),
 });
 
 /**

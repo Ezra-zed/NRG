@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { z } from 'zod';
+import Joi from 'joi';
 import { registerCustomer, listCustomers } from '../controllers/customer.controller.js';
 import { validate } from '../middlewares/validate.middleware.js';
 import { upload } from '../utils/upload.js';
@@ -12,23 +12,17 @@ import asyncHandler from '../utils/asyncHandler.js';
 const router = Router();
 
 // Multipart text fields are "" when absent — normalize empties to undefined.
-const optStr = (schema) =>
-  z
-    .union([z.literal(''), schema])
-    .transform((v) => (v === '' ? undefined : v));
+const optStr = (schema) => schema.empty('').optional();
 
-const registerSchema = z.object({
-  name: optStr(z.string().trim().min(2, 'name must be at least 2 characters')).optional(),
-  mobile: z.string().trim().min(7, 'mobile must be valid').max(15),
-  email: optStr(z.string().trim().toLowerCase().email('Invalid email address')).optional(),
-  location: optStr(z.string().trim().min(2)).optional(),
-  pincode: optStr(z.string().trim().min(4)).optional(),
-  propertyType: optStr(z.enum(['residential', 'commercial', 'industrial', 'other'])).optional(),
-  monthlyBillAmount: z.preprocess(
-    (v) => (v === '' || v === undefined || v === null ? undefined : Number(v)),
-    z.number().min(0).optional()
-  ),
-  requiredSystemSize: optStr(z.string().trim()).optional(),
+const registerSchema = Joi.object({
+  name: optStr(Joi.string().trim().min(2).messages({ 'string.min': 'name must be at least 2 characters' })),
+  mobile: Joi.string().trim().min(7).max(15).required().messages({ 'string.min': 'mobile must be valid' }),
+  email: optStr(Joi.string().trim().lowercase().email({ tlds: { allow: false } }).messages({ 'string.email': 'Invalid email address' })),
+  location: optStr(Joi.string().trim().min(2)),
+  pincode: optStr(Joi.string().trim().min(4)),
+  propertyType: optStr(Joi.string().valid('residential', 'commercial', 'industrial', 'other')),
+  monthlyBillAmount: Joi.number().min(0).empty('').optional(),
+  requiredSystemSize: optStr(Joi.string().trim()),
 });
 
 /**

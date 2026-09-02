@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { z } from 'zod';
+import Joi from 'joi';
 import {
   listComplaints,
   createCallLog,
@@ -23,16 +23,15 @@ import asyncHandler from '../utils/asyncHandler.js';
 const router = Router();
 
 /** 24-hex-char MongoDB ObjectId. */
-const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Must be a valid 24-char ObjectId');
+const objectId = Joi.string().pattern(/^[0-9a-fA-F]{24}$/).messages({ 'string.pattern.base': 'Must be a valid 24-char ObjectId' });
 
 /**
  * GET /api/main-point/complain/listing — paginated complaints.
  */
-const listingQuerySchema = z
-  .object({
-    page: z.coerce.number().int().positive().optional(),
-    limit: z.coerce.number().int().positive().max(100).optional(),
-    status: z.enum(['open', 'in-progress', 'resolved', 'closed']).optional(),
+const listingQuerySchema = Joi.object({
+    page: Joi.number().integer().positive().optional(),
+    limit: Joi.number().integer().positive().max(100).optional(),
+    status: Joi.string().valid('open', 'in-progress', 'resolved', 'closed').optional(),
   });
 
 router.get(
@@ -44,10 +43,10 @@ router.get(
 /**
  * POST /api/main-point/complain/call-log — record a follow-up call.
  */
-const callLogBodySchema = z.object({
-  complaintId: objectId,
-  notes: z.string().trim().min(1, 'notes cannot be empty').max(2000),
-  calledBy: z.string().trim().min(1, 'calledBy cannot be empty').max(100),
+const callLogBodySchema = Joi.object({
+  complaintId: objectId.required(),
+  notes: Joi.string().trim().min(1).max(2000).required().messages({ 'string.min': 'notes cannot be empty' }),
+  calledBy: Joi.string().trim().min(1).max(100).required().messages({ 'string.min': 'calledBy cannot be empty' }),
 });
 
 router.post(
@@ -59,9 +58,9 @@ router.post(
 /**
  * POST /api/main-point/complain/company/:id — file a complaint against a company.
  */
-const complaintBodySchema = z.object({
-  userId: objectId,
-  message: z.string().trim().min(5, 'message must be at least 5 characters').max(2000),
+const complaintBodySchema = Joi.object({
+  userId: objectId.required(),
+  message: Joi.string().trim().min(5).max(2000).required().messages({ 'string.min': 'message must be at least 5 characters' }),
 });
 
 router.post(

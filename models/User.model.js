@@ -25,7 +25,7 @@ const userSchema = new mongoose.Schema(
       minlength: [2, 'name must be at least 2 characters'],
       maxlength: [100, 'name must be at most 100 characters'],
     },
-    // Identity fields are enforced as *required* by the signup zod schema;
+    // Identity fields are enforced as *required* by the signup Joi schema;
     // they stay optional at the DB layer because a user can be auto-created
     // by the no-password (phone only) or OAuth flows.
     email: {

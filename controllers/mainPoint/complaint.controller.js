@@ -108,7 +108,7 @@ export const listComplaints = async (req, res) => {
  *         description: Complaint not found
  *
  * @param {import('express').Request} req
- *   req.body — { complaintId, notes, calledBy } (zod validated).
+ *   req.body — { complaintId, notes, calledBy } (Joi validated).
  * @param {import('express').Response} res
  * @returns {Promise<void>} 201 { success, data: CallLog, message, error }
  */

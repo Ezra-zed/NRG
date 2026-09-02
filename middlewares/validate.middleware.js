@@ -1,21 +1,26 @@
 /**
- * Reusable Zod validation middleware.
+ * Reusable Joi validation middleware.
  *
  * Validates and sanitizes req.body / req.query / req.params
  * and passes validation errors to the central error handler.
  *
- * @param {import("zod").ZodSchema} schema
+ * @param {import("joi").AnySchema} schema
  * @param {"body"|"query"|"params"} source
  * @returns {import("express").RequestHandler}
  */
 export const validate = (schema, source = "body") => {
   return (req, _res, next) => {
-    const result = schema.safeParse(req[source]);
+    const { error: validationError, value } = schema.validate(req[source], {
+      abortEarly: false,
+      allowUnknown: false,
+      convert: true,
+      stripUnknown: true,
+    });
 
-    if (!result.success) {
+    if (validationError) {
       const details = {};
 
-      for (const issue of result.error.issues) {
+      for (const issue of validationError.details) {
         const field = issue.path.length ? issue.path.join(".") : source;
 
         if (!details[field]) {
@@ -35,8 +40,8 @@ export const validate = (schema, source = "body") => {
       return next(error);
     }
 
-    // Replace request data with Zod's parsed/sanitized data.
-    req[source] = result.data;
+    // Replace request data with Joi's parsed/sanitized data.
+    req[source] = value;
 
     return next();
   };

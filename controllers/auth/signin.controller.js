@@ -53,7 +53,7 @@ import { handleNoPasswordSignin } from './strategies/handleNoPasswordSignin.js';
  *         description: Invalid credentials
  *
  * @param {import('express').Request} req
- *   req.body — validated by zod: { method, email?, password?, phone?, otp?, oauthProvider?, oauthToken? }
+ *   req.body — validated by Joi: { method, email?, password?, phone?, otp?, oauthProvider?, oauthToken? }
  * @param {import('express').Response} res
  * @returns {Promise<void>} 200 { success, data: { user, token }, message, error }
  */

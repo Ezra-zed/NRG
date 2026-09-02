@@ -14,7 +14,7 @@ import { generateToken } from '../../../utils/jwt.js';
  * @param {string} payload.method Must be 'no-password'.
  * @param {string} [payload.email] Either email or phone is required.
  * @param {string} [payload.phone] The other accepted identifier.
- * @param {string} payload.otp The OTP code (shape-validated by zod).
+ * @param {string} payload.otp The OTP code (shape-validated by Joi).
  * @returns {Promise<{ user: object, token: string, message: string }>}
  * @throws {AppError} 500 when the OTP verification service is unconfigured in production.
  */

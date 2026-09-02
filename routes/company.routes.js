@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { z } from 'zod';
+import Joi from 'joi';
 import {
   upsertCompanyProfile,
   getCompanyLeads,
@@ -21,26 +21,23 @@ const router = Router();
 
 const leadStatusEnum = ['new', 'accepted', 'contacted', 'site-visit', 'quote-submitted', 'won', 'lost', 'rejected'];
 
-const leadsQuerySchema = z.object({
-  page: z.coerce.number().int().positive().optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
-  status: z.enum(leadStatusEnum).optional(),
+const leadsQuerySchema = Joi.object({
+  page: Joi.number().integer().positive().optional(),
+  limit: Joi.number().integer().positive().max(100).optional(),
+  status: Joi.string().valid(...leadStatusEnum).optional(),
 });
 
-const updateLeadSchema = z
-  .object({
-    status: z.enum(leadStatusEnum).optional(),
-    quote: z
-      .object({
-        estimatedPrice: z.coerce.number().min(0),
-        warrantyYears: z.coerce.number().min(0).optional(),
-        notes: z.string().trim().max(1000).optional(),
+const updateLeadSchema = Joi.object({
+    status: Joi.string().valid(...leadStatusEnum).optional(),
+    quote: Joi.object({
+        estimatedPrice: Joi.number().min(0).required(),
+        warrantyYears: Joi.number().min(0).optional(),
+        notes: Joi.string().trim().max(1000).optional(),
       })
+      .min(1)
       .optional(),
-  })
-  .refine((b) => b.status !== undefined || (b.quote !== undefined && Object.keys(b.quote).length > 0), {
-    message: 'Provide either status or quote to update the lead.',
-    path: ['body'],
+  }).or('status', 'quote').messages({
+    'object.missing': 'Provide either status or quote to update the lead.',
   });
 
 /**

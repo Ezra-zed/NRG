@@ -1,7 +1,7 @@
-import { z } from 'zod';
+import Joi from 'joi';
 
 /**
- * Centralised zod schemas used by the auth routes.
+ * Centralized Joi schemas used by the auth routes.
  */
 
 // Public signup role names are normalized to the existing database role values.
@@ -15,19 +15,22 @@ const ROLE_ALIASES = {
   'seller-co': 'seller-co',
 };
 
-const roleSchema = z.preprocess(
-  (value) => (typeof value === 'string' ? ROLE_ALIASES[value.trim()] : value),
-  z.enum(['user', 'install-co', 'seller-co'], {
-    message: 'role must be customer, installer-company, or solar-seller-company',
-  })
-);
+const roleSchema = Joi.string().trim().custom((value, helpers) => {
+  const normalizedRole = ROLE_ALIASES[value];
+  if (!normalizedRole) {
+    return helpers.error('any.only');
+  }
+  return normalizedRole;
+}).messages({
+  'any.only': 'role must be customer, installer-company, or solar-seller-company',
+});
 
 // Supported authentication methods.
 export const METHOD_ENUM = ['O-auth', 'JWT-auth', 'no-password'];
 
-const emailSchema = z.string().trim().toLowerCase().email('Invalid email address');
-const phoneSchema = z.string().trim().regex(/^\+?[0-9]{7,15}$/, 'Invalid phone number');
-const nameSchema = z.string().trim().min(2, 'Name must be at least 2 characters').max(100);
+const emailSchema = Joi.string().trim().lowercase().email({ tlds: { allow: false } }).messages({ 'string.email': 'Invalid email address' });
+const phoneSchema = Joi.string().trim().pattern(/^\+?[0-9]{7,15}$/).messages({ 'string.pattern.base': 'Invalid phone number' });
+const nameSchema = Joi.string().trim().min(2).max(100).messages({ 'string.min': 'Name must be at least 2 characters' });
 
 // OAuth provider identifiers accepted by the (stubbed) provider verification.
 const OAUTH_PROVIDERS = ['google'];
@@ -37,72 +40,48 @@ const OAUTH_PROVIDERS = ['google'];
  *
  * Branching: solar seller companies require businessName + gstin, installer
  * companies require licenseNumber, and customers need only basic details.
- * These role-specific fields
- * are optional at the schema level and enforced with `.superRefine()` so all
- * other fields still get validated in one pass.
+ * These role-specific fields are enforced with Joi conditionals so all other
+ * fields still get validated in one pass.
  */
-export const signupSchema = z
-  .object({
-    role: roleSchema,
-    name: nameSchema,
-    email: emailSchema,
-    phone: phoneSchema,
-    password: z.string().min(6, 'Password must be at least 6 characters').optional(),
+export const signupSchema = Joi.object({
+    role: roleSchema.required(),
+    name: nameSchema.required(),
+    email: emailSchema.required(),
+    phone: phoneSchema.required(),
+    password: Joi.string().min(6).optional().messages({ 'string.min': 'Password must be at least 6 characters' }),
     // role-specific
-    businessName: z.string().trim().min(2, 'businessName is required for seller-co').optional(),
-    gstin: z.string().trim().toUpperCase().optional(),
-    licenseNumber: z.string().trim().min(2, 'licenseNumber is required for install-co').optional(),
-  })
-  .superRefine((data, ctx) => {
-    if (data.role === 'seller-co') {
-      if (!data.businessName) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['businessName'], message: 'businessName is required for role seller-co' });
-      }
-      if (!data.gstin) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['gstin'], message: 'gstin is required for role seller-co' });
-      }
-    }
-    if (data.role === 'install-co') {
-      if (!data.licenseNumber) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['licenseNumber'], message: 'licenseNumber is required for role install-co' });
-      }
-    }
+    businessName: Joi.string().trim().min(2).optional().messages({ 'string.min': 'businessName must be at least 2 characters' })
+      .when('role', { is: 'seller-co', then: Joi.required().messages({ 'any.required': 'businessName is required for solar-seller-company' }) }),
+    gstin: Joi.string().trim().uppercase().optional()
+      .when('role', { is: 'seller-co', then: Joi.required().messages({ 'any.required': 'gstin is required for solar-seller-company verification' }) }),
+    licenseNumber: Joi.string().trim().min(2).optional().messages({ 'string.min': 'licenseNumber must be at least 2 characters' })
+      .when('role', { is: 'install-co', then: Joi.required().messages({ 'any.required': 'licenseNumber is required for installer-company verification' }) }),
   });
 
 /**
  * POST /api/auth/signin — single endpoint handling all three sign-in methods.
  * The `method` field routes to the right strategy handler.
  */
-export const signinSchema = z
-  .object({
-    method: z.enum(METHOD_ENUM, { message: 'method must be one of: O-auth, JWT-auth, no-password' }),
+export const signinSchema = Joi.object({
+    method: Joi.string().valid(...METHOD_ENUM).required().messages({ 'any.only': 'method must be one of: O-auth, JWT-auth, no-password' }),
     // JWT-auth credentials
-    email: emailSchema.optional(),
-    password: z.string().min(1, 'password is required').optional(),
+    email: emailSchema.optional().when('method', { is: 'JWT-auth', then: Joi.required().messages({ 'any.required': 'JWT-auth requires email and password' }) }),
+    password: Joi.string().min(1).optional().messages({ 'string.min': 'password is required' })
+      .when('method', { is: 'JWT-auth', then: Joi.required().messages({ 'any.required': 'JWT-auth requires email and password' }) }),
     // no-password credentials
     phone: phoneSchema.optional(),
-    otp: z.string().regex(/^[0-9]{4,8}$/, 'otp must be a 4-8 digit code').optional(),
+    otp: Joi.string().pattern(/^[0-9]{4,8}$/).optional().messages({ 'string.pattern.base': 'otp must be a 4-8 digit code' })
+      .when('method', { is: 'no-password', then: Joi.required().messages({ 'any.required': 'no-password requires otp' }) }),
     // O-auth credentials
-    oauthProvider: z.enum(OAUTH_PROVIDERS, { message: 'unsupported oauth provider' }).optional(),
-    oauthToken: z.string().min(1, 'oauthToken is required').optional(),
-  })
-  .superRefine((data, ctx) => {
-    if (data.method === 'JWT-auth') {
-      if (!data.email || !data.password) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['credentials'], message: 'JWT-auth requires email and password' });
-      }
+    oauthProvider: Joi.string().valid(...OAUTH_PROVIDERS).optional().messages({ 'any.only': 'unsupported oauth provider' })
+      .when('method', { is: 'O-auth', then: Joi.required().messages({ 'any.required': 'O-auth requires oauthProvider and oauthToken' }) }),
+    oauthToken: Joi.string().min(1).optional().messages({ 'string.min': 'oauthToken is required' })
+      .when('method', { is: 'O-auth', then: Joi.required().messages({ 'any.required': 'O-auth requires oauthProvider and oauthToken' }) }),
+  }).custom((data, helpers) => {
+    if (data.method === 'no-password' && !data.email && !data.phone) {
+      return helpers.error('any.custom');
     }
-    if (data.method === 'no-password') {
-      if (!data.email && !data.phone) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['identifier'], message: 'no-password requires either email or phone' });
-      }
-      if (!data.otp) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['otp'], message: 'no-password requires otp' });
-      }
-    }
-    if (data.method === 'O-auth') {
-      if (!data.oauthProvider || !data.oauthToken) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['oauth'], message: 'O-auth requires oauthProvider and oauthToken' });
-      }
-    }
+    return data;
+  }).messages({
+    'any.custom': 'no-password requires either email or phone',
   });

@@ -11,7 +11,7 @@ import { generateToken } from '../../../utils/jwt.js';
  *
  * @param {object} payload Validated request body.
  * @param {string} payload.method Must be 'JWT-auth'.
- * @param {string} payload.email Login email (lowercased by the zod schema).
+ * @param {string} payload.email Login email (lowercased by the Joi schema).
  * @param {string} payload.password Plain-text password.
  * @returns {Promise<{ user: object, token: string, message: string }>}
  * @throws {AppError} 401 for any credential problem.

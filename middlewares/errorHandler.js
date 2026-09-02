@@ -31,7 +31,7 @@ export default function errorHandler(err, req, res, next) {
   }
 
   // --- Mongoose ValidationError: schema validation failed ---------------------
-  // (also covers the zod-derived validation error raised by validate.middleware)
+  // Also covers the normalized validation error raised by validate.middleware.
   if (err.name === 'ValidationError') {
     statusCode = 400;
     message = 'Validation failed.';

@@ -54,7 +54,7 @@ import { sendSuccess } from '../../utils/apiResponse.js';
  *             schema: { $ref: '#/components/schemas/ErrorResponse' }
  *
  * @param {import('express').Request} req
- *   req.body — validated by zod:
+ *   req.body — validated by Joi:
  *   { role, name, email, phone, password?, businessName?, gstin?, licenseNumber? }
  * @param {import('express').Response} res
  * @returns {Promise<void>} 201 { success, data: { user, token }, message, error }
@@ -71,7 +71,7 @@ export const signup = async (req, res) => {
     licenseNumber,
   } = req.body;
 
-  // The role-aware branch requirements were already enforced by the zod schema,
+  // The role-aware branch requirements were already enforced by the Joi schema,
   // but a defensive duplicate check keeps direct helper misuse safe.
   const existing = await User.findOne({ $or: [{ email }, { phone }] });
   if (existing) {
