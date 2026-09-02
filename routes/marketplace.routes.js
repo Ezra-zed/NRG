@@ -23,14 +23,14 @@ const marketplaceQuerySchema = z
   .object({
     category: z
       .enum(['solar-module', 'inverter', 'cable', 'structure', 'BOS'], {
-        error: "category must be one of: solar-module, inverter, cable, structure, BOS",
+        message: "category must be one of: solar-module, inverter, cable, structure, BOS",
       })
       .optional(),
     page: z.coerce.number().int().positive().optional(),
     limit: z.coerce.number().int().positive().max(100).optional(),
     minPrice: z.coerce.number().nonnegative().optional(),
     maxPrice: z.coerce.number().nonnegative().optional(),
-    sortBy: z.enum(['price', 'newest'], { error: 'sortBy must be price or newest' }).optional(),
+    sortBy: z.enum(['price', 'newest'], { message: 'sortBy must be price or newest' }).optional(),
   })
   .refine((q) => q.minPrice === undefined || q.maxPrice === undefined || q.minPrice <= q.maxPrice, {
     message: 'minPrice cannot be greater than maxPrice',

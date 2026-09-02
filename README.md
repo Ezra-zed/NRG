@@ -45,7 +45,7 @@ Requires Node.js ≥ 18.11 (latest LTS recommended).
 | Endpoint                                                 | Description                                   |
 | -------------------------------------------------------- | --------------------------------------------- |
 | `GET  /api/home?type=on-grid\|off-grid\|hybrid-grid`     | Home product collections per solution type    |
-| `POST /api/signup`                                       | Role-aware registration (seller-co / install-co / user) |
+| `POST /api/signup`                                       | Registration for customer / installer company / solar seller company |
 | `POST /api/signin`              | Single endpoint → OAuth / JWT / no-password strategies |
 | `GET  /api/marketplace?category=...&page=&limit=&minPrice=&maxPrice=&sortBy=` | Product catalogue |
 | `GET  /api/main-point/complain/listing`                  | Paginated complaints (populated users)          |

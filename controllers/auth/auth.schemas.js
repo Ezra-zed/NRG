@@ -4,8 +4,23 @@ import { z } from 'zod';
  * Centralised zod schemas used by the auth routes.
  */
 
-// Supported actor roles.
-export const ROLE_ENUM = ['seller-co', 'install-co', 'user'];
+// Public signup role names are normalized to the existing database role values.
+export const ROLE_ENUM = ['customer', 'installer-company', 'solar-seller-company'];
+const ROLE_ALIASES = {
+  customer: 'user',
+  'installer-company': 'install-co',
+  'solar-seller-company': 'seller-co',
+  user: 'user',
+  'install-co': 'install-co',
+  'seller-co': 'seller-co',
+};
+
+const roleSchema = z.preprocess(
+  (value) => (typeof value === 'string' ? ROLE_ALIASES[value.trim()] : value),
+  z.enum(['user', 'install-co', 'seller-co'], {
+    message: 'role must be customer, installer-company, or solar-seller-company',
+  })
+);
 
 // Supported authentication methods.
 export const METHOD_ENUM = ['O-auth', 'JWT-auth', 'no-password'];
@@ -20,14 +35,15 @@ const OAUTH_PROVIDERS = ['google'];
 /**
  * POST /api/signup — role-aware signup schema.
  *
- * Branching: `seller-co` requires businessName + gstin, `install-co` requires
- * licenseNumber, `user` needs only basic details. These role-specific fields
+ * Branching: solar seller companies require businessName + gstin, installer
+ * companies require licenseNumber, and customers need only basic details.
+ * These role-specific fields
  * are optional at the schema level and enforced with `.superRefine()` so all
  * other fields still get validated in one pass.
  */
 export const signupSchema = z
   .object({
-    role: z.enum(ROLE_ENUM, { error: 'role must be one of: seller-co, install-co, user' }),
+    role: roleSchema,
     name: nameSchema,
     email: emailSchema,
     phone: phoneSchema,
@@ -51,10 +67,6 @@ export const signupSchema = z
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['licenseNumber'], message: 'licenseNumber is required for role install-co' });
       }
     }
-    // No password for no-password accounts.
-    if (data.role === 'user' && !data.password) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['password'], message: 'password is required for role user with JWT-auth' });
-    }
   });
 
 /**
@@ -63,7 +75,7 @@ export const signupSchema = z
  */
 export const signinSchema = z
   .object({
-    method: z.enum(METHOD_ENUM, { error: 'method must be one of: O-auth, JWT-auth, no-password' }),
+    method: z.enum(METHOD_ENUM, { message: 'method must be one of: O-auth, JWT-auth, no-password' }),
     // JWT-auth credentials
     email: emailSchema.optional(),
     password: z.string().min(1, 'password is required').optional(),
@@ -71,7 +83,7 @@ export const signinSchema = z
     phone: phoneSchema.optional(),
     otp: z.string().regex(/^[0-9]{4,8}$/, 'otp must be a 4-8 digit code').optional(),
     // O-auth credentials
-    oauthProvider: z.enum(OAUTH_PROVIDERS, { error: 'unsupported oauth provider' }).optional(),
+    oauthProvider: z.enum(OAUTH_PROVIDERS, { message: 'unsupported oauth provider' }).optional(),
     oauthToken: z.string().min(1, 'oauthToken is required').optional(),
   })
   .superRefine((data, ctx) => {

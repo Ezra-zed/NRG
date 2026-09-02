@@ -4,7 +4,7 @@ import bcrypt from 'bcrypt';
 /**
  * User — all three actor types live in a single collection, differentiated by role.
  *
- * role:         'seller-co' (seller company) | 'install-co' (installer company) | 'user' (end customer)
+ * role:         'seller-co' (solar/product seller) | 'install-co' (installer company) | 'user' (customer)
  * authProvider: 'O-auth' | 'JWT-auth' | 'no-password'
  * oauthId:      provider-side identifier for OAuth accounts.
  * password:     only stored for JWT-auth accounts (bcrypt hashed).

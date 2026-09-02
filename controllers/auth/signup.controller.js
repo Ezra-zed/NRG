@@ -19,14 +19,14 @@ import { sendSuccess } from '../../utils/apiResponse.js';
  *             type: object
  *             required: [role, name, email, phone]
  *             properties:
- *               role: { type: string, enum: [seller-co, install-co, user] }
+ *               role: { type: string, enum: [customer, installer-company, solar-seller-company] }
  *               name: { type: string, description: 'Full name / company name' }
  *               email: { type: string, format: email }
  *               phone: { type: string, example: '+919876543210' }
  *               password: { type: string, minLength: 6, description: 'Required for JWT-auth flows (optional)' }
- *               businessName: { type: string, description: 'Required when role=seller-co' }
- *               gstin: { type: string, description: 'Required when role=seller-co' }
- *               licenseNumber: { type: string, description: 'Required when role=install-co' }
+ *               businessName: { type: string, description: 'Required when role=solar-seller-company' }
+ *               gstin: { type: string, description: 'Required when role=solar-seller-company' }
+ *               licenseNumber: { type: string, description: 'Required when role=installer-company' }
  *     responses:
  *       '201':
  *         description: Created

@@ -39,6 +39,13 @@ export default function errorHandler(err, req, res, next) {
       ?? Object.fromEntries(
           Object.entries(err.errors || {}).map(([field, e]) => [field, e.message])
         );
+
+    console.error('[VALIDATION]', JSON.stringify({
+      method: req.method,
+      url: req.originalUrl,
+      source: err.validationSource || 'unknown',
+      details: error,
+    }));
   }
 
   // --- MongoDB duplicate key (E11000) ----------------------------------------

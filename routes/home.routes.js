@@ -20,7 +20,7 @@ const router = Router();
  */
 const homeQuerySchema = z.object({
   type: z.enum(['on-grid', 'off-grid', 'hybrid-grid'], {
-    error: "Query 'type' must be one of: on-grid, off-grid, hybrid-grid",
+    message: "Query 'type' must be one of: on-grid, off-grid, hybrid-grid",
   }),
 });
 
