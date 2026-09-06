@@ -4,6 +4,7 @@ import Lead from '../models/Lead.model.js';
 import User from '../models/User.model.js';
 import AppError from '../utils/AppError.js';
 import { sendSuccess } from '../utils/apiResponse.js';
+import { uploadCurrentBill } from '../services/currentBill.service.js';
 
 export const assertObjectId = (id, label = 'id') => {
   if (!mongoose.Types.ObjectId.isValid(String(id))) {
@@ -23,7 +24,16 @@ export const assertObjectId = (id, label = 'id') => {
  * @param {import('express').Response} res
  * @returns {Promise<void>} 201 { success, data: { project, distributedTo }, message, error }
  */
-export const createProjectRequest = async (req, res) => {
+export const createProjectRequestWithDependencies = async (
+  req,
+  res,
+  {
+    projectModel = Project,
+    leadModel = Lead,
+    userModel = User,
+    uploadBill = uploadCurrentBill,
+  } = {}
+) => {
   const {
     location,
     monthlyBill,
@@ -35,21 +45,29 @@ export const createProjectRequest = async (req, res) => {
 
   if (customerId) assertObjectId(customerId, 'customerId');
 
-  const project = await Project.create({
+  const currentBillUrl = req.file ? await uploadBill(req.file) : null;
+
+  const project = await projectModel.create({
     customerId: customerId || undefined,
     location,
     monthlyBill,
     propertyType,
     systemPreference,
     budget,
+    currentBillUrl,
+    ...(req.file && {
+      currentBillOriginalName: req.file.originalname,
+      currentBillMimeType: req.file.mimetype,
+      currentBillUploadedAt: new Date(),
+    }),
     status: 'pending',
   });
 
   // Distribute a lead to every registered installer/seller company so the
   // company lead dashboard has something to list.
-  const companies = await User.find({ role: { $in: ['install-co', 'seller-co'] } }).select('_id').lean();
+  const companies = await userModel.find({ role: { $in: ['install-co', 'seller-co'] } }).select('_id').lean();
   const leads = companies.map((c) => ({ companyId: c._id, projectId: project._id, status: 'new' }));
-  if (leads.length) await Lead.insertMany(leads);
+  if (leads.length) await leadModel.insertMany(leads);
 
   sendSuccess(
     res,
@@ -58,6 +76,8 @@ export const createProjectRequest = async (req, res) => {
     `Project request created & queued to ${leads.length} companies.`
   );
 };
+
+export const createProjectRequest = (req, res) => createProjectRequestWithDependencies(req, res);
 
 /**
  * GET /api/projects/:projectId/quotes — companies' quotes on a project.

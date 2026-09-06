@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import multer from 'multer';
 import { fileURLToPath } from 'node:url';
+import AppError from './AppError.js';
 
 /**
  * Multer file-upload wiring used by any endpoint that accepts files
@@ -32,6 +33,25 @@ const storage = multer.diskStorage({
 export const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 },
+});
+
+const currentBillMimeTypes = new Set(['application/pdf', 'image/png', 'image/jpeg']);
+const currentBillExtensions = new Set(['.pdf', '.png', '.jpg', '.jpeg']);
+
+export const currentBillFileFilter = (_req, file, cb) => {
+  const extension = path.extname(file.originalname || '').toLowerCase();
+  if (!currentBillMimeTypes.has(file.mimetype) || !currentBillExtensions.has(extension)) {
+    cb(new AppError('currentBill must be a PDF, PNG, JPG, or JPEG file.', 400));
+    return;
+  }
+  cb(null, true);
+};
+
+/** In-memory uploader for the Cloudinary-backed current bill endpoint. */
+export const currentBillUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: currentBillFileFilter,
 });
 
 /**

@@ -3,6 +3,7 @@ import Joi from 'joi';
 import { createProjectRequest, getProjectQuotes } from '../controllers/project.controller.js';
 import { validate } from '../middlewares/validate.middleware.js';
 import asyncHandler from '../utils/asyncHandler.js';
+import { currentBillUpload } from '../utils/upload.js';
 
 /**
  * Customer project / quote routes.
@@ -24,7 +25,7 @@ const projectRequestSchema = Joi.object({
 /**
  * POST /api/projects/request — submit a "Get Solar Quote" request.
  */
-router.post('/request', validate(projectRequestSchema), asyncHandler(createProjectRequest));
+router.post('/request', currentBillUpload.single('currentBill'), validate(projectRequestSchema), asyncHandler(createProjectRequest));
 
 /**
  * GET /api/projects/:projectId/quotes — companies' quotes for comparison.

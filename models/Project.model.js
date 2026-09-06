@@ -44,6 +44,10 @@ const projectSchema = new mongoose.Schema(
       default: 'on-grid',
     },
     budget: { type: Number, min: 0 },
+    currentBillUrl: { type: String, default: null },
+    currentBillOriginalName: { type: String, trim: true },
+    currentBillMimeType: { type: String, trim: true },
+    currentBillUploadedAt: { type: Date },
     status: {
       type: String,
       enum: ['pending', 'quoted', 'in-progress', 'completed', 'cancelled'],

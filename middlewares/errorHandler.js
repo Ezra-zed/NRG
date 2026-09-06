@@ -48,6 +48,14 @@ export default function errorHandler(err, req, res, next) {
     }));
   }
 
+  if (err.name === 'MulterError') {
+    statusCode = 400;
+    message = err.code === 'LIMIT_FILE_SIZE'
+      ? 'currentBill must not exceed 10 MB.'
+      : 'Invalid currentBill upload.';
+    error = { code: err.code };
+  }
+
   // --- MongoDB duplicate key (E11000) ----------------------------------------
   if (err.code === 11000) {
     statusCode = 409;

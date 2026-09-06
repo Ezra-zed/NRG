@@ -22,6 +22,11 @@ npm run dev               # node --watch server.js
 
 Requires Node.js ≥ 18.11 (latest LTS recommended).
 
+The project request bill upload requires `CLOUDINARY_CLOUD_NAME`,
+`CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in `.env`. Bills are uploaded
+to the `enrg/current-bills` Cloudinary folder; only the returned URL and file
+metadata are stored in MongoDB.
+
 ## Structure
 
 ```
