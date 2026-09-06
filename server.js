@@ -11,6 +11,7 @@ import customerRoutes from './routes/customer.routes.js';
 import projectRoutes from './routes/project.routes.js';
 import companyRoutes from './routes/company.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import companyAssistantRoutes from './routes/companyAssistant.routes.js';
 import errorHandler from './middlewares/errorHandler.js';
 import notFoundHandler from './middlewares/notFoundHandler.js';
 import { UPLOAD_DIR } from './utils/upload.js';
@@ -38,6 +39,7 @@ app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/companies', companyRoutes);
+app.use('/api/company', companyAssistantRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/main-point', mainPointRoutes);
 // Auth lives at the /api root: POST /api/signup & POST /api/signin

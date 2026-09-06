@@ -24,6 +24,8 @@ const projectRoot = path.resolve(here, '..');
  *     description: Product catalogue
  *   - name: Main Point
  *     description: Core dashboard (complaints, call logs, installer companies)
+ *   - name: Company
+ *     description: Authenticated company operations
  */
 
 const swaggerOptions = {
