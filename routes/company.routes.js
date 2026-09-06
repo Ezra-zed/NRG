@@ -57,6 +57,21 @@ router.post(
 );
 
 /**
+ * POST /api/companies/profile/setup — save the logged-in company's profile.
+ * Uses the same multipart fields and upsert behavior as the legacy profile route.
+ */
+router.post(
+  '/profile/setup',
+  authenticate,
+  upload.fields([
+    { name: 'gstCertificate', maxCount: 1 },
+    { name: 'businessRegistration', maxCount: 1 },
+    { name: 'completedProjectPhotos', maxCount: 10 },
+  ]),
+  asyncHandler(upsertCompanyProfile)
+);
+
+/**
  * GET /api/companies/leads — the logged-in company's lead list.
  */
 router.get('/leads', authenticate, validate(leadsQuerySchema, 'query'), asyncHandler(getCompanyLeads));
