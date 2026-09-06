@@ -19,6 +19,22 @@ import { sendError } from '../utils/apiResponse.js';
  */
 // eslint-disable-next-line no-unused-vars
 export default function errorHandler(err, req, res, next) {
+  console.error('[ERROR_HANDLER][RECEIVED]', JSON.stringify({
+    method: req.method,
+    url: req.originalUrl,
+    name: err.name,
+    message: err.message,
+    code: err.code,
+    statusCode: err.statusCode,
+    hasCause: Boolean(err.cause),
+    cause: err.cause ? {
+      name: err.cause.name,
+      message: err.cause.message,
+      httpCode: err.cause.http_code,
+      code: err.cause.code,
+    } : null,
+  }));
+
   let statusCode = err.statusCode || 500;
   let message = err.message || 'Internal server error';
   let error = null;

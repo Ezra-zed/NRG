@@ -137,8 +137,11 @@ test('Cloudinary service sends the bill buffer to the configured folder', async 
 
   try {
     const buffer = Buffer.from('bill');
-    assert.equal(await uploadCurrentBill({ buffer }, uploader), 'https://res.cloudinary.com/demo/bill.pdf');
-    assert.deepEqual(options, { folder: 'enrg/current-bills', resource_type: 'auto' });
+    assert.equal(await uploadCurrentBill({ buffer, originalname: 'current-bill.pdf', mimetype: 'application/pdf' }, uploader), 'https://res.cloudinary.com/demo/bill.pdf');
+    assert.equal(options.folder, 'enrg/current-bills');
+    assert.equal(options.resource_type, 'raw');
+    assert.equal(options.format, 'pdf');
+    assert.match(options.public_id, /^current-bill-[0-9a-f-]+$/);
     assert.deepEqual(uploadedBuffer, buffer);
   } finally {
     for (const [key, value] of Object.entries(originalEnv)) {

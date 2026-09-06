@@ -43,9 +43,27 @@ export const createProjectRequestWithDependencies = async (
     customerId,
   } = req.body;
 
+  console.log('[PROJECT_REQUEST][CONTROLLER_START]', JSON.stringify({
+    method: req.method,
+    url: req.originalUrl,
+    bodyKeys: Object.keys(req.body || {}),
+    hasFile: Boolean(req.file),
+    file: req.file ? {
+      originalName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      size: req.file.size,
+      bufferLength: req.file.buffer?.length,
+    } : null,
+  }));
+
   if (customerId) assertObjectId(customerId, 'customerId');
 
+  console.log('[PROJECT_REQUEST][UPLOAD_STEP]', JSON.stringify({ willUpload: Boolean(req.file) }));
   const currentBillUrl = req.file ? await uploadBill(req.file) : null;
+  console.log('[PROJECT_REQUEST][UPLOAD_COMPLETE]', JSON.stringify({
+    uploaded: Boolean(req.file),
+    hasCurrentBillUrl: Boolean(currentBillUrl),
+  }));
 
   const project = await projectModel.create({
     customerId: customerId || undefined,
@@ -68,6 +86,11 @@ export const createProjectRequestWithDependencies = async (
   const companies = await userModel.find({ role: { $in: ['install-co', 'seller-co'] } }).select('_id').lean();
   const leads = companies.map((c) => ({ companyId: c._id, projectId: project._id, status: 'new' }));
   if (leads.length) await leadModel.insertMany(leads);
+
+  console.log('[PROJECT_REQUEST][COMPLETE]', JSON.stringify({
+    projectId: project._id,
+    distributedLeads: leads.length,
+  }));
 
   sendSuccess(
     res,

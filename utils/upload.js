@@ -40,10 +40,25 @@ const currentBillExtensions = new Set(['.pdf', '.png', '.jpg', '.jpeg']);
 
 export const currentBillFileFilter = (_req, file, cb) => {
   const extension = path.extname(file.originalname || '').toLowerCase();
+  console.log('[CURRENT_BILL][FILTER]', JSON.stringify({
+    originalName: file.originalname,
+    mimeType: file.mimetype,
+    extension,
+    acceptedMimeType: currentBillMimeTypes.has(file.mimetype),
+    acceptedExtension: currentBillExtensions.has(extension),
+  }));
+
   if (!currentBillMimeTypes.has(file.mimetype) || !currentBillExtensions.has(extension)) {
+    console.error('[CURRENT_BILL][FILTER_REJECTED]', JSON.stringify({
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      extension,
+    }));
     cb(new AppError('currentBill must be a PDF, PNG, JPG, or JPEG file.', 400));
     return;
   }
+
+  console.log('[CURRENT_BILL][FILTER_ACCEPTED]');
   cb(null, true);
 };
 
