@@ -11,12 +11,13 @@ export default class AppError extends Error {
    * @param {number} [statusCode=500] HTTP status code.
    * @param {boolean} [isOperational=true] True for expected/operational errors.
    */
-  constructor(message, statusCode = 500, isOperational = true) {
+  constructor(message, statusCode = 500, isOperational = true, code = null) {
     super(message);
     this.name = this.constructor.name;
     this.statusCode = statusCode;
     this.isOperational = isOperational;
     this.status = String(statusCode).startsWith('4') ? 'fail' : 'error';
+    this.errorCode = code;
     // Capture the stack trace, excluding this constructor frame.
     Error.captureStackTrace?.(this, this.constructor);
   }

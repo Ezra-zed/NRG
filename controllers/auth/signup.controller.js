@@ -2,6 +2,7 @@ import User from '../../models/User.model.js';
 import AppError from '../../utils/AppError.js';
 import { generateToken } from '../../utils/jwt.js';
 import { sendSuccess } from '../../utils/apiResponse.js';
+import { publicUser } from '../../utils/publicUser.js';
 
 /**
  * Sign up a new user.
@@ -95,5 +96,5 @@ export const signup = async (req, res) => {
   // Password is excluded by the model's toJSON transform.
   const token = generateToken({ id: user._id.toString(), role: user.role });
 
-  sendSuccess(res, 201, { user, token }, `Account created as ${role}.`);
+  sendSuccess(res, 201, { user: publicUser(user), token }, `Account created as ${role}.`);
 };

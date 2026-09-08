@@ -2,6 +2,7 @@ import { sendSuccess } from '../../utils/apiResponse.js';
 import { handleOAuthSignin } from './strategies/handleOAuthSignin.js';
 import { handleJwtSignin } from './strategies/handleJwtSignin.js';
 import { handleNoPasswordSignin } from './strategies/handleNoPasswordSignin.js';
+import { publicUser } from '../../utils/publicUser.js';
 
 /**
  * Single sign-in endpoint that handles all three authentication methods.
@@ -69,5 +70,5 @@ export const signin = async (req, res) => {
   const handler = strategies[method];
   const { user, token, message } = await handler(req.body);
 
-  sendSuccess(res, 200, { user, token }, message);
+  sendSuccess(res, 200, { user: publicUser(user), token }, message);
 };

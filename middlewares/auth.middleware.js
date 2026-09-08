@@ -47,3 +47,19 @@ export default async function authenticate(req, _res, next) {
     next(error);
   }
 }
+
+/** Require an authenticated administrator after authenticate has run. */
+export function requireAdmin(req, _res, next) {
+  if (req.user?.role !== 'admin') {
+    return next(new AppError('Administrator access required.', 403, true, 'FORBIDDEN'));
+  }
+  return next();
+}
+
+/** Require an authenticated marketplace company after authenticate has run. */
+export function requireCompany(req, _res, next) {
+  if (!['install-co', 'seller-co'].includes(req.user?.role)) {
+    return next(new AppError('Company access required.', 403, true, 'FORBIDDEN'));
+  }
+  return next();
+}

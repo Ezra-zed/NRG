@@ -32,6 +32,7 @@ const leadSchema = new mongoose.Schema(
       required: [true, 'projectId is required'],
       index: true,
     },
+    customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
     status: {
       type: String,
       enum: ['new', 'accepted', 'contacted', 'site-visit', 'quote-submitted', 'won', 'lost', 'rejected'],

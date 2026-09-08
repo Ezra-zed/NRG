@@ -34,14 +34,23 @@ export const createProjectRequestWithDependencies = async (
     uploadBill = uploadCurrentBill,
   } = {}
 ) => {
+  const authenticatedUser = req.user;
+  const authenticatedCustomerId = authenticatedUser?._id || authenticatedUser?.id;
+
+  if (!authenticatedCustomerId || authenticatedUser?.role !== 'user') {
+    throw new AppError('You must sign up or sign in to send a quote request.', 401);
+  }
+
   const {
     location,
     monthlyBill,
     propertyType,
     systemPreference,
     budget,
-    customerId,
+    companyId,
   } = req.body;
+
+  const customerId = authenticatedCustomerId;
 
   console.log('[PROJECT_REQUEST][CONTROLLER_START]', JSON.stringify({
     method: req.method,
@@ -56,7 +65,19 @@ export const createProjectRequestWithDependencies = async (
     } : null,
   }));
 
-  if (customerId) assertObjectId(customerId, 'customerId');
+  assertObjectId(customerId, 'customerId');
+  if (companyId) assertObjectId(companyId, 'companyId');
+
+  let selectedCompany;
+  if (companyId) {
+    selectedCompany = await userModel.findOne({
+      _id: companyId,
+      role: { $in: ['install-co', 'seller-co'] },
+    }).select('_id').lean();
+    if (!selectedCompany) {
+      throw new AppError(`Company '${companyId}' does not exist.`, 404, true, 'COMPANY_NOT_FOUND');
+    }
+  }
 
   console.log('[PROJECT_REQUEST][UPLOAD_STEP]', JSON.stringify({ willUpload: Boolean(req.file) }));
   const currentBillUrl = req.file ? await uploadBill(req.file) : null;
@@ -67,11 +88,13 @@ export const createProjectRequestWithDependencies = async (
 
   const project = await projectModel.create({
     customerId: customerId || undefined,
+    userId: customerId || undefined,
     location,
     monthlyBill,
     propertyType,
     systemPreference,
     budget,
+    companyId: selectedCompany?._id,
     currentBillUrl,
     ...(req.file && {
       currentBillOriginalName: req.file.originalname,
@@ -81,10 +104,16 @@ export const createProjectRequestWithDependencies = async (
     status: 'pending',
   });
 
-  // Distribute a lead to every registered installer/seller company so the
-  // company lead dashboard has something to list.
-  const companies = await userModel.find({ role: { $in: ['install-co', 'seller-co'] } }).select('_id').lean();
-  const leads = companies.map((c) => ({ companyId: c._id, projectId: project._id, status: 'new' }));
+  // A selected company receives only its own lead; without a selection the
+  // existing marketplace-wide distribution behavior is preserved.
+  const companies = selectedCompany
+    ? [selectedCompany]
+    : await userModel.find({ role: { $in: ['install-co', 'seller-co'] } }).select('_id').lean();
+  const leads = companies.map((c) => ({
+    companyId: c._id,
+    projectId: project._id,
+    status: 'new',
+  }));
   if (leads.length) await leadModel.insertMany(leads);
 
   console.log('[PROJECT_REQUEST][COMPLETE]', JSON.stringify({
@@ -92,11 +121,23 @@ export const createProjectRequestWithDependencies = async (
     distributedLeads: leads.length,
   }));
 
+  const projectResponse = {
+    id: project._id?.toString?.() || project.id,
+    customerId: project.customerId,
+    location: project.location,
+    monthlyBill: project.monthlyBill,
+    propertyType: project.propertyType,
+    systemPreference: project.systemPreference,
+    budget: project.budget,
+    currentBillUrl: project.currentBillUrl,
+    createdAt: project.createdAt,
+  };
+
   sendSuccess(
     res,
     201,
-    { project, distributedLeads: leads.length },
-    `Project request created & queued to ${leads.length} companies.`
+    { project: projectResponse, distributedLeads: leads.length },
+    'Project quote request created successfully'
   );
 };
 
@@ -125,18 +166,21 @@ export const getProjectQuotes = async (req, res) => {
     throw new AppError(`Project '${projectId}' does not exist.`, 404);
   }
 
+  const requesterId = String(req.user?._id || req.user?.id || '');
+  const ownerId = String(project.userId || project.customerId || '');
+  if (req.user?.role !== 'admin' && ownerId !== requesterId) {
+    throw new AppError('You are not allowed to view quotes for this project.', 403, true, 'FORBIDDEN');
+  }
+
   const quotes = (project.quotes || []).map((q) => ({
     id: q._id.toString(),
-    company: {
-      id: q.companyId?._id?.toString() || q.companyId?.toString(),
-      name: q.companyId?.name || q.companyName,
-    },
-    rating: q.rating,
-    experience: q.yearsExperience,
+    leadId: q.leadId,
+    companyId: q.companyId?._id?.toString() || q.companyId?.toString(),
+    companyName: q.companyId?.name || q.companyName,
     estimatedPrice: q.estimatedPrice,
-    warranty: q.warrantyYears,
-    verified: q.verified,
-    status: q.status,
+    warrantyYears: q.warrantyYears,
+    notes: q.notes,
+    submittedAt: q.submittedAt || project.updatedAt,
   }));
 
   sendSuccess(res, 200, { projectId, quotes, count: quotes.length }, 'Company quotes fetched.');

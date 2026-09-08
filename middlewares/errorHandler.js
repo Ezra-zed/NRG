@@ -37,7 +37,7 @@ export default function errorHandler(err, req, res, next) {
 
   let statusCode = err.statusCode || 500;
   let message = err.message || 'Internal server error';
-  let error = null;
+  let error = err.errorCode ? { code: err.errorCode } : null;
 
   // --- Mongoose CastError: invalid ObjectId or wrong value type -------------
   if (err.name === 'CastError') {

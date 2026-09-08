@@ -4,9 +4,10 @@ import {
   getAdminDashboard,
   verifyCompany,
   getAdminManagement,
+  getAdminLeads,
 } from '../controllers/admin.controller.js';
 import { validate } from '../middlewares/validate.middleware.js';
-import authenticate from '../middlewares/auth.middleware.js';
+import authenticate, { requireAdmin } from '../middlewares/auth.middleware.js';
 import asyncHandler from '../utils/asyncHandler.js';
 
 /**
@@ -22,10 +23,21 @@ const verifySchema = Joi.object({
   verificationBadges: Joi.array().items(Joi.string().valid(...verificationBadges)).default([]),
 });
 
+const adminLeadsQuerySchema = Joi.object({
+  page: Joi.number().integer().positive().optional(),
+  limit: Joi.number().integer().positive().max(100).optional(),
+  search: Joi.string().trim().max(100).optional(),
+  status: Joi.string().valid('new', 'accepted', 'contacted', 'site-visit', 'quote-submitted', 'won', 'lost', 'rejected').optional(),
+  customerId: Joi.string().hex().length(24).optional(),
+  companyId: Joi.string().hex().length(24).optional(),
+  from: Joi.date().iso().optional(),
+  to: Joi.date().iso().optional(),
+});
+
 /**
  * GET /api/admin/dashboard — marketplace metrics.
  */
-router.get('/dashboard', authenticate, asyncHandler(getAdminDashboard));
+router.get('/dashboard', authenticate, requireAdmin, asyncHandler(getAdminDashboard));
 
 /**
  * PUT /api/admin/companies/:companyId/verify — apply verification badges.
@@ -33,6 +45,7 @@ router.get('/dashboard', authenticate, asyncHandler(getAdminDashboard));
 router.put(
   '/companies/:companyId/verify',
   authenticate,
+  requireAdmin,
   validate(verifySchema),
   asyncHandler(verifyCompany)
 );
@@ -40,6 +53,8 @@ router.put(
 /**
  * GET /api/admin/management — operational data.
  */
-router.get('/management', authenticate, asyncHandler(getAdminManagement));
+router.get('/management', authenticate, requireAdmin, asyncHandler(getAdminManagement));
+
+router.get('/leads', authenticate, requireAdmin, validate(adminLeadsQuerySchema, 'query'), asyncHandler(getAdminLeads));
 
 export default router;

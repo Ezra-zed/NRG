@@ -54,18 +54,83 @@ export const upsertCompanyProfile = async (req, res) => {
   sendSuccess(res, 200, profile, 'Company profile saved.');
 };
 
+export const getPublicCompaniesWithDependencies = async (
+  req,
+  res,
+  { userModel = User, profileModel = CompanyProfile } = {}
+) => {
+  const currentPage = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const pageSize = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+  const { role, search } = req.query;
+  const { location } = req.query;
+  const normalizedSearch = typeof search === 'string' ? search.trim().toLowerCase() : '';
+
+  const userFilter = { role: { $in: role ? [role] : ['install-co', 'seller-co'] } };
+  const users = await userModel.find(userFilter).select('_id name businessName email role').lean();
+  const profiles = await profileModel.find({ companyId: { $in: users.map((user) => user._id) } }).lean();
+  const profilesByCompanyId = new Map(profiles.map((profile) => [profile.companyId.toString(), profile]));
+
+  const companies = users
+    .map((user) => {
+      const profile = profilesByCompanyId.get(user._id.toString());
+      if (!profile) return null;
+
+      const name = user.businessName || user.name;
+      const locations = profile.serviceLocations || [];
+      const location = locations[0];
+      const normalizedLocation = typeof req.query.location === 'string' ? req.query.location.trim().toLowerCase() : '';
+      if (normalizedLocation && !locations.some((value) => String(value || '').toLowerCase().includes(normalizedLocation))) {
+        return null;
+      }
+      if (normalizedSearch && ![name, ...locations].some((value) => String(value || '').toLowerCase().includes(normalizedSearch))) {
+        return null;
+      }
+
+      return {
+        id: user._id.toString(),
+        name,
+        ...(location ? { location } : {}),
+        projectsCompleted: 0,
+        verificationBadges: profile.verificationBadges || [],
+        ...(user.email ? { email: user.email } : {}),
+        role: user.role,
+        rating: profile.rating ?? 0,
+      };
+    })
+    .filter(Boolean);
+
+  const total = companies.length;
+  const start = (currentPage - 1) * pageSize;
+  sendSuccess(
+    res,
+    200,
+    {
+      companies: companies.slice(start, start + pageSize),
+      pagination: {
+        page: currentPage,
+        limit: pageSize,
+        total,
+        pages: Math.ceil(total / pageSize) || 1,
+      },
+    },
+    'Companies fetched successfully'
+  );
+};
+
+export const getPublicCompanies = (req, res) => getPublicCompaniesWithDependencies(req, res);
+
 export const getCompanyLeads = async (req, res) => {
   const { page = 1, limit = 10, status } = req.query;
   const currentPage = Math.max(1, parseInt(page, 10) || 1);
-  const pageSize = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
+  const pageSize = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
 
   const filter = { companyId: req.user._id || req.user.id };
   if (status) filter.status = status;
 
   const [leads, total] = await Promise.all([
     Lead.find(filter)
-      .populate('projectId', 'location systemPreference monthlyBill budget status createdAt')
-      .populate({ path: 'projectId.customerId', select: 'name mobile email location pincode' })
+      .populate('projectId', 'location propertyType systemPreference monthlyBill budget status createdAt userId customerId')
+      .populate({ path: 'projectId.userId', select: 'name phone email' })
       .sort({ createdAt: -1 })
       .skip((currentPage - 1) * pageSize)
       .limit(pageSize)
@@ -83,19 +148,21 @@ export const getCompanyLeads = async (req, res) => {
       ? {
           id: l.projectId._id.toString(),
           location: l.projectId.location,
+          propertyType: l.projectId.propertyType,
           systemPreference: l.projectId.systemPreference,
+          systemSize: l.projectId.systemPreference,
           monthlyBill: l.projectId.monthlyBill,
           budget: l.projectId.budget,
           projectStatus: l.projectId.status,
           createdAt: l.projectId.createdAt,
-          customer: l.projectId.customerId
+              customer: (l.projectId.userId || l.projectId.customerId)
             ? {
-                id: l.projectId.customerId._id.toString(),
-                name: l.projectId.customerId.name,
-                mobile: l.projectId.customerId.mobile,
-                email: l.projectId.customerId.email,
-                location: l.projectId.customerId.location,
-                pincode: l.projectId.customerId.pincode,
+                id: (l.projectId.userId || l.projectId.customerId)._id.toString(),
+                name: (l.projectId.userId || l.projectId.customerId).name,
+                mobile: (l.projectId.userId || l.projectId.customerId).mobile || (l.projectId.userId || l.projectId.customerId).phone,
+                email: (l.projectId.userId || l.projectId.customerId).email,
+                location: (l.projectId.userId || l.projectId.customerId).location,
+                pincode: (l.projectId.userId || l.projectId.customerId).pincode,
               }
             : null,
         }
@@ -111,7 +178,7 @@ export const getCompanyLeads = async (req, res) => {
         page: currentPage,
         limit: pageSize,
         total,
-        totalPages: Math.ceil(total / pageSize) || 1,
+        pages: Math.ceil(total / pageSize) || 1,
       },
     },
     'Leads fetched.'
@@ -168,6 +235,8 @@ const syncQuoteToProject = async (lead, quote) => {
       verified: Boolean(profile?.verified),
       estimatedPrice: Number(quote.estimatedPrice),
       warrantyYears: quote.warrantyYears !== undefined ? Number(quote.warrantyYears) : 0,
+      notes: quote.notes || '',
+      leadId: lead._id,
       status: 'submitted',
     });
     if (project.status === 'pending') project.status = 'quoted';

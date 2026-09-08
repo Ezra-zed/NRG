@@ -18,6 +18,8 @@ const quoteSchema = new mongoose.Schema(
     verified: { type: Boolean, default: false },
     estimatedPrice: { type: Number, required: [true, 'estimatedPrice is required'] },
     warrantyYears: { type: Number, min: 0, default: 0 },
+    notes: { type: String, trim: true },
+    leadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lead' },
     status: {
       type: String,
       enum: ['submitted', 'accepted', 'won', 'lost'],
@@ -31,6 +33,7 @@ const projectSchema = new mongoose.Schema(
   {
     customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', index: true },
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
+    companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
     location: { type: String, trim: true, required: [true, 'location is required'] },
     monthlyBill: { type: Number, min: 0 },
     propertyType: {

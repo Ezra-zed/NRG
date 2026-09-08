@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import Joi from 'joi';
 import { createProjectRequest, getProjectQuotes } from '../controllers/project.controller.js';
+import authenticate from '../middlewares/auth.middleware.js';
 import { validate } from '../middlewares/validate.middleware.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { currentBillUpload } from '../utils/upload.js';
+import { rateLimit } from '../middlewares/rateLimit.middleware.js';
 
 /**
  * Customer project / quote routes.
@@ -20,16 +22,17 @@ const projectRequestSchema = Joi.object({
   propertyType: Joi.string().valid('residential', 'commercial', 'industrial', 'other').optional(),
   systemPreference: Joi.string().valid('on-grid', 'off-grid', 'hybrid-grid').optional(),
   budget: Joi.number().min(0).optional(),
+  companyId: objectId.optional(),
 });
 
 /**
  * POST /api/projects/request — submit a "Get Solar Quote" request.
  */
-router.post('/request', currentBillUpload.single('currentBill'), validate(projectRequestSchema), asyncHandler(createProjectRequest));
+router.post('/request', authenticate, rateLimit({ max: 10 }), currentBillUpload.single('currentBill'), validate(projectRequestSchema), asyncHandler(createProjectRequest));
 
 /**
  * GET /api/projects/:projectId/quotes — companies' quotes for comparison.
  */
-router.get('/:projectId/quotes', asyncHandler(getProjectQuotes));
+router.get('/:projectId/quotes', authenticate, asyncHandler(getProjectQuotes));
 
 export default router;

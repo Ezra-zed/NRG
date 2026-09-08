@@ -155,3 +155,110 @@ export const getAdminManagement = async (req, res) => {
     'Management data fetched.'
   );
 };
+
+/** GET /api/admin/leads — newest-first view of every marketplace lead. */
+export const getAdminLeads = async (req, res) => {
+  const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 50));
+  const { search, status, customerId, companyId, from, to } = req.query;
+  const filter = {};
+
+  if (status) filter.status = status;
+  if (companyId) {
+    assertObjectId(companyId, 'companyId');
+    filter.companyId = companyId;
+  }
+  if (customerId) {
+    assertObjectId(customerId, 'customerId');
+    const customerProjects = await Project.find({
+      $or: [{ userId: customerId }, { customerId }],
+    }).select('_id').lean();
+    filter.projectId = { $in: customerProjects.map((project) => project._id) };
+  }
+  if (search) {
+    const searchRegex = new RegExp(String(search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const matchingCustomers = await User.find({
+      $or: [{ name: searchRegex }, { phone: searchRegex }, { email: searchRegex }],
+    }).select('_id').lean();
+    const matchingProjects = await Project.find({
+      $or: [
+        { userId: { $in: matchingCustomers.map((customer) => customer._id) } },
+        { location: searchRegex },
+      ],
+    }).select('_id').lean();
+    filter.projectId = {
+      $in: matchingProjects.map((project) => project._id),
+    };
+  }
+  if (from || to) {
+    filter.createdAt = {};
+    if (from) filter.createdAt.$gte = new Date(from);
+    if (to) filter.createdAt.$lte = new Date(to);
+  }
+
+  const [leads, total] = await Promise.all([
+    Lead.find(filter)
+      .populate({ path: 'projectId', select: 'customerId userId location monthlyBill propertyType systemPreference budget createdAt' })
+      .populate({ path: 'companyId', select: 'name businessName email role' })
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean(),
+    Lead.countDocuments(filter),
+  ]);
+
+  const customerIds = leads.flatMap((lead) => {
+    const project = lead.projectId;
+    return project?.userId || project?.customerId ? [project.userId || project.customerId] : [];
+  });
+  const customers = await User.find({ _id: { $in: customerIds } }).select('name email phone').lean();
+  const customerById = new Map(customers.map((customer) => [customer._id.toString(), customer]));
+
+  const items = leads.map((lead) => {
+    const project = lead.projectId;
+    const rawCustomer = project?.userId || project?.customerId;
+    const customer = rawCustomer?._id ? rawCustomer : customerById.get(String(rawCustomer));
+    return {
+      id: lead._id.toString(),
+      status: lead.status,
+      createdAt: lead.createdAt,
+      project: project ? {
+        id: project._id.toString(),
+        location: project.location,
+        monthlyBill: project.monthlyBill,
+        propertyType: project.propertyType,
+        systemPreference: project.systemPreference,
+        budget: project.budget,
+        customer: customer ? {
+          id: customer._id.toString(),
+          name: customer.name,
+          mobile: customer.mobile || customer.phone,
+          ...(customer.email ? { email: customer.email } : {}),
+          location: customer.location || project.location,
+        } : null,
+      } : null,
+      company: lead.companyId ? {
+        id: lead.companyId._id.toString(),
+        name: lead.companyId.businessName || lead.companyId.name,
+      } : null,
+      quote: lead.quote ? {
+        estimatedPrice: lead.quote.estimatedPrice,
+        warrantyYears: lead.quote.warrantyYears,
+        notes: lead.quote.notes,
+        submittedAt: lead.quote.submittedAt,
+      } : null,
+    };
+  }).filter((item) => {
+    if (!search) return true;
+    const value = String(search).toLowerCase();
+    const customer = item.project?.customer;
+    return [customer?.name, customer?.mobile, customer?.email, item.project?.location]
+      .some((field) => String(field || '').toLowerCase().includes(value));
+  });
+
+  sendSuccess(res, 200, {
+    items,
+    total,
+    pagination: { page, limit, pages: Math.ceil(total / limit) || 1 },
+  }, 'Admin leads fetched.');
+};

@@ -4,6 +4,7 @@ import { signin } from '../controllers/auth/signin.controller.js';
 import { signupSchema, signinSchema } from '../controllers/auth/auth.schemas.js';
 import { validate } from '../middlewares/validate.middleware.js';
 import asyncHandler from '../utils/asyncHandler.js';
+import { rateLimit } from '../middlewares/rateLimit.middleware.js';
 
 /**
  * Auth routes — signup & the multi-method signin endpoint.
@@ -23,12 +24,12 @@ const router = Router();
 /**
  * POST /api/signup — role-aware account creation.
  */
-router.post('/signup', validate(signupSchema), asyncHandler(signup));
+router.post('/signup', rateLimit({ max: 10 }), validate(signupSchema), asyncHandler(signup));
 
 /**
  * POST /api/signin — single dispatch endpoint for the OAuth / JWT / no-password
  * strategy handlers (controllers/auth/strategies/*).
  */
-router.post('/signin', validate(signinSchema), asyncHandler(signin));
+router.post('/signin', rateLimit({ max: 20 }), validate(signinSchema), asyncHandler(signin));
 
 export default router;

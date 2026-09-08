@@ -7,9 +7,6 @@ import Joi from 'joi';
 // Public signup role names are normalized to the existing database role values.
 export const ROLE_ENUM = ['customer', 'installer-company', 'solar-seller-company'];
 const ROLE_ALIASES = {
-  customer: 'user',
-  'installer-company': 'install-co',
-  'solar-seller-company': 'seller-co',
   user: 'user',
   'install-co': 'install-co',
   'seller-co': 'seller-co',
@@ -22,7 +19,7 @@ const roleSchema = Joi.string().trim().custom((value, helpers) => {
   }
   return normalizedRole;
 }).messages({
-  'any.only': 'role must be customer, installer-company, or solar-seller-company',
+  'any.only': 'role must be user, install-co, or seller-co',
 });
 
 // Supported authentication methods.
@@ -48,7 +45,7 @@ export const signupSchema = Joi.object({
     name: nameSchema.required(),
     email: emailSchema.required(),
     phone: phoneSchema.required(),
-    password: Joi.string().min(6).optional().messages({ 'string.min': 'Password must be at least 6 characters' }),
+    password: Joi.string().min(6).required().messages({ 'string.min': 'Password must be at least 6 characters' }),
     // role-specific
     businessName: Joi.string().trim().min(2).empty('').optional().messages({ 'string.min': 'businessName must be at least 2 characters' })
       .when('role', { is: 'seller-co', then: Joi.required().messages({ 'any.required': 'businessName is required for solar-seller-company' }) }),

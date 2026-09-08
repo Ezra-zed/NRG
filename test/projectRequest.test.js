@@ -5,6 +5,7 @@ import { createProjectRequestWithDependencies } from '../controllers/project.con
 import { uploadCurrentBill } from '../services/currentBill.service.js';
 import { currentBillFileFilter } from '../utils/upload.js';
 import errorHandler from '../middlewares/errorHandler.js';
+import AppError from '../utils/AppError.js';
 
 const makeResponse = () => ({
   statusCode: null,
@@ -19,7 +20,7 @@ const makeResponse = () => ({
   },
 });
 
-const makeModels = (onCreate) => ({
+const makeModels = (onCreate, selectedCompany = null) => ({
   projectModel: {
     create: async (payload) => {
       onCreate(payload);
@@ -27,12 +28,14 @@ const makeModels = (onCreate) => ({
     },
   },
   userModel: {
+    findOne: () => ({ select: () => ({ lean: async () => selectedCompany }) }),
     find: () => ({ select: () => ({ lean: async () => [] }) }),
   },
   leadModel: { insertMany: async () => {} },
 });
 
 const requestBody = { location: 'Pune', monthlyBill: 2500, propertyType: 'residential' };
+const authUser = { _id: '507f1f77bcf86cd799439012', role: 'user' };
 
 test('project request accepts PDF and image bills and persists the Cloudinary URL', async (t) => {
   for (const file of [
@@ -43,7 +46,7 @@ test('project request accepts PDF and image bills and persists the Cloudinary UR
       let created;
       const response = makeResponse();
       await createProjectRequestWithDependencies(
-        { body: requestBody, file },
+        { body: requestBody, file, user: authUser },
         response,
         {
           ...makeModels((payload) => { created = payload; }),
@@ -66,7 +69,7 @@ test('project request without a bill keeps the URL null and does not upload', as
   let created;
   const response = makeResponse();
   await createProjectRequestWithDependencies(
-    { body: requestBody },
+    { body: requestBody, user: authUser },
     response,
     {
       ...makeModels((payload) => { created = payload; }),
@@ -77,6 +80,17 @@ test('project request without a bill keeps the URL null and does not upload', as
   assert.equal(uploadCalled, false);
   assert.equal(created.currentBillUrl, null);
   assert.equal(response.body.data.project.currentBillUrl, null);
+});
+
+test('project request requires an authenticated customer account', async () => {
+  await assert.rejects(
+    createProjectRequestWithDependencies(
+      { body: requestBody },
+      makeResponse(),
+      { ...makeModels(() => {}) }
+    ),
+    (error) => error.statusCode === 401 && /sign up or sign in/i.test(error.message)
+  );
 });
 
 test('current bill rejects unsupported file types with 400', () => {
@@ -99,7 +113,7 @@ test('Cloudinary failure prevents project creation', async () => {
   let createCalled = false;
   await assert.rejects(
     createProjectRequestWithDependencies(
-      { body: requestBody, file: { originalname: 'bill.pdf', mimetype: 'application/pdf', buffer: Buffer.from('pdf') } },
+      { body: requestBody, file: { originalname: 'bill.pdf', mimetype: 'application/pdf', buffer: Buffer.from('pdf') }, user: authUser },
       makeResponse(),
       {
         ...makeModels(() => { createCalled = true; }),
@@ -150,4 +164,67 @@ test('Cloudinary service sends the bill buffer to the configured folder', async 
       else process.env[envKey] = value;
     }
   }
+});
+
+test('project request with companyId attaches one targeted lead', async () => {
+  let created;
+  let insertedLeads;
+  const companyId = '507f1f77bcf86cd799439011';
+  const response = makeResponse();
+  await createProjectRequestWithDependencies(
+    { body: { ...requestBody, companyId }, user: authUser },
+    response,
+    {
+      ...makeModels((payload) => { created = payload; }, { _id: companyId }),
+      leadModel: { insertMany: async (leads) => { insertedLeads = leads; } },
+    }
+  );
+
+  assert.equal(created.companyId, companyId);
+  assert.deepEqual(insertedLeads, [{ companyId, projectId: 'project-1', status: 'new' }]);
+  assert.equal(response.body.data.distributedLeads, 1);
+  assert.equal(response.body.message, 'Project quote request created successfully');
+});
+
+test('project request without companyId preserves distribution to all companies', async () => {
+  let insertedLeads;
+  const response = makeResponse();
+  await createProjectRequestWithDependencies(
+    { body: requestBody, user: authUser },
+    response,
+    {
+      ...makeModels(() => {}),
+      userModel: {
+        findOne: () => ({ select: () => ({ lean: async () => null }) }),
+        find: () => ({ select: () => ({ lean: async () => [{ _id: 'company-1' }, { _id: 'company-2' }] }) }),
+      },
+      leadModel: { insertMany: async (leads) => { insertedLeads = leads; } },
+    }
+  );
+
+  assert.equal(response.body.data.distributedLeads, 2);
+  assert.deepEqual(insertedLeads.map((lead) => lead.companyId), ['company-1', 'company-2']);
+});
+
+test('project request rejects an invalid companyId with COMPANY_NOT_FOUND', async () => {
+  const companyId = '507f1f77bcf86cd799439011';
+  await assert.rejects(
+    createProjectRequestWithDependencies(
+      { body: { ...requestBody, companyId }, user: authUser },
+      makeResponse(),
+      makeModels(() => {}, null)
+    ),
+    (error) => error.statusCode === 404 && error.errorCode === 'COMPANY_NOT_FOUND'
+  );
+});
+
+test('company not found errors use the standard error code envelope', () => {
+  const response = makeResponse();
+  errorHandler(new AppError('Company not found.', 404, true, 'COMPANY_NOT_FOUND'), {}, response, () => {});
+  assert.deepEqual(response.body, {
+    success: false,
+    data: null,
+    message: 'Company not found.',
+    error: { code: 'COMPANY_NOT_FOUND' },
+  });
 });

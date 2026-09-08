@@ -3,6 +3,7 @@ import Customer from '../models/Customer.model.js';
 import { generateToken } from '../utils/jwt.js';
 import { publicFileUrl } from '../utils/upload.js';
 import { sendSuccess } from '../utils/apiResponse.js';
+import { publicUser } from '../utils/publicUser.js';
 
 /**
  * POST /api/customers/register — register an end customer.
@@ -68,7 +69,7 @@ export const registerCustomer = async (req, res) => {
   sendSuccess(
     res,
     201,
-    { customer, user, token, userCreated },
+    { customer: customer.toJSON(), user: publicUser(user), token, userCreated },
     userCreated ? 'Customer registered & account created.' : 'Customer registered.'
   );
 };
