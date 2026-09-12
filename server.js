@@ -2,9 +2,11 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
+import passport from './config/googleOAuth.js';
 import connectDB from './config/db.js';
 import homeRoutes from './routes/home.routes.js';
 import authRoutes from './routes/auth.routes.js';
+import googleAuthRoutes from './routes/googleAuth.routes.js';
 import marketplaceRoutes from './routes/marketplace.routes.js';
 import mainPointRoutes from './routes/mainPoint.routes.js';
 import customerRoutes from './routes/customer.routes.js';
@@ -26,6 +28,7 @@ const app = express();
 app.use(cors());                 // Cross-origin access for the frontends
 app.use(express.json());         // JSON bodies
 app.use(express.urlencoded({ extended: true })); // form bodies
+app.use(passport.initialize());  // Passport is used by the Google code flow
 
 // Uploaded files are served statically (photos, bills, certificates).
 app.use('/uploads', express.static(UPLOAD_DIR));
@@ -44,6 +47,9 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/main-point', mainPointRoutes);
 // Auth lives at the /api root: POST /api/signup & POST /api/signin
 app.use('/api', authRoutes);
+
+// Browser OAuth endpoints use the redirect URI http://localhost:<PORT>/auth/...
+app.use('/auth', googleAuthRoutes);
 
 // ---------- Fallbacks ---------------------------------------------------------
 app.use(notFoundHandler);   // unmatched routes → 404 JSON

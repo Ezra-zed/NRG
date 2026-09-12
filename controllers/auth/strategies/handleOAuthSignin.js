@@ -1,34 +1,76 @@
-import crypto from 'node:crypto';
 import User from '../../../models/User.model.js';
 import AppError from '../../../utils/AppError.js';
 import { generateToken } from '../../../utils/jwt.js';
 
 /**
- * Verify an OAuth access token with the provider.
- *
- * STUB — the only placeholder in the auth engine. Replace the body with a real
- * provider verification call, e.g. for Google:
- *   const res   = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${token}`);
- *   const profile = await res.json();
- * In development a deterministic profile is derived from the token hash so the
- * full flow stays testable offline.
+ * Verify a Google token issued directly by Google or through Supabase Auth.
  *
  * @param {'google'} provider OAuth provider name.
  * @param {string} token OAuth access token from the client.
  * @returns {Promise<{ id: string, email: string, name: string, provider: string }>}
- * @throws {AppError} 501 when the provider verification is not configured.
+ * @throws {AppError} 401 when the token is invalid.
+ * @throws {AppError} 501 when provider configuration is missing.
  */
 async function verifyOAuthToken(provider, token) {
-  // Real provider verification is a hard requirement for production use.
-  if (process.env.NODE_ENV === 'production') {
-    throw new AppError('OAuth provider verification is not configured for production.', 501);
+  if (provider !== 'google') {
+    throw new AppError(`OAuth provider ${provider} is not configured.`, 501);
   }
 
-  const digest = crypto.createHash('sha256').update(token).digest('hex').slice(0, 16);
+  const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, '');
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+
+  if (supabaseUrl && !supabaseAnonKey) {
+    throw new AppError('SUPABASE_ANON_KEY is required when SUPABASE_URL is configured.', 501);
+  }
+
+  if (supabaseUrl && supabaseAnonKey) {
+    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: supabaseAnonKey,
+      },
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (response.ok) {
+      const profile = await response.json();
+      const metadata = profile.user_metadata || {};
+      const googleIdentity = profile.identities?.find((identity) => identity.provider === 'google');
+      const providerId = googleIdentity?.identity_data?.sub || profile.id;
+
+      if (!providerId || !profile.email) {
+        throw new AppError('Supabase OAuth profile is incomplete.', 401);
+      }
+
+      return {
+        id: `google-${providerId}`,
+        email: profile.email,
+        name: metadata.full_name || metadata.name || profile.email,
+        provider,
+      };
+    }
+  }
+
+  if (!process.env.OAUTH_CLIENT_ID) {
+    throw new AppError('OAUTH_CLIENT_ID is missing.', 501);
+  }
+
+  const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`, {
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) {
+    throw new AppError('Google OAuth token is invalid or expired.', 401);
+  }
+
+  const profile = await response.json();
+  if (profile.aud !== process.env.OAUTH_CLIENT_ID || !profile.sub || !profile.email) {
+    throw new AppError('Google OAuth token audience or profile is invalid.', 401);
+  }
+
   return {
-    id: `${provider}-${digest}`,
-    email: `oauth-${digest}@${provider}.stub`,
-    name: 'OAuth User',
+    id: `google-${profile.sub}`,
+    email: profile.email,
+    name: profile.name || profile.email,
     provider,
   };
 }
@@ -56,8 +98,10 @@ export const handleOAuthSignin = async (payload) => {
     throw new AppError(`Unable to verify ${provider} token. Invalid or expired OAuth credentials.`, 401);
   }
 
-  // Find or create the user keyed by the provider-stable oauthId.
-  let user = await User.findOne({ oauthId: profile.id });
+  // Reuse an existing provider account or link a verified email account.
+  let user = await User.findOne({
+    $or: [{ oauthId: profile.id }, { email: profile.email }],
+  });
   let created = false;
 
   if (!user) {

@@ -8,6 +8,7 @@ Production-ready Node.js (ES Modules) + Express + MongoDB (Mongoose) API.
 - **Express.js** routing · **MongoDB + Mongoose** ODM · **dotenv**
 - **Joi** input validation (middleware-based)
 - **JWT auth** with three sign-in strategies (`O-auth`, `JWT-auth`, `no-password`)
+- **Google OAuth 2.0** authorization-code login with CSRF state protection
 - Centralized error handler (Mongoose `CastError`, `ValidationError`, duplicate-key `11000`)
 - `morgan` request logging, `cors`, `asyncHandler` wrapper
 - **Swagger UI** auto-generated from JSDoc comments
@@ -52,6 +53,9 @@ metadata are stored in MongoDB.
 | `GET  /api/home?type=on-grid\|off-grid\|hybrid-grid`     | Home product collections per solution type    |
 | `POST /api/signup`                                       | Registration for customer / installer company / solar seller company |
 | `POST /api/signin`              | Single endpoint → OAuth / JWT / no-password strategies |
+| `GET  /auth/google`             | Start Google OAuth authorization-code login |
+| `GET  /auth/google/callback`    | Complete Google login and set the session cookie |
+| `GET  /auth/logout`              | Clear the Google session cookie |
 | `GET  /api/marketplace?category=...&page=&limit=&minPrice=&maxPrice=&sortBy=` | Product catalogue |
 | `GET  /api/main-point/complain/listing`                  | Paginated complaints (populated users)          |
 | `POST /api/main-point/complain/call-log`                | Log a follow-up call                            |
@@ -78,6 +82,15 @@ POST /api/signin
 { "method": "no-password", "phone": "+919876543210", "otp": "123456" }
 ```
 
-> The OAuth token verification and OTP verification are explicitly **stubbed**
-> for development (see `controllers/auth/strategies/`); wire them to your
-> provider SDKs before going to production.
+For browser-based Google OAuth, create a Google web application credential and
+add this authorized redirect URI for local development:
+
+```text
+http://localhost:5000/auth/google/callback
+```
+
+Set `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `JWT_SECRET`, and `PORT` in `.env`.
+The callback creates or finds the local user by Google ID/email, signs the
+existing application JWT, and stores it in an `httpOnly` cookie named
+`nrg_session`. The existing JSON `/api/signin` OAuth strategy remains available
+for clients that already send a Google access token directly.
