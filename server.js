@@ -57,12 +57,19 @@ app.use(errorHandler);      // central error formatting (Mongoose-aware)
 
 // ---------- Boot ------------------------------------------------------------------
 const PORT = process.env.PORT || 5000;
+const HOST = "0.0.0.0";
 
 const startServer = async () => {
-  await connectDB(); // process.exit(1) internally on failure
+  await connectDB();
 
-  app.listen(PORT, () => {
-    console.log(`[SERVER] API running on http://localhost:${PORT}${process.env.NODE_ENV === 'production' ? '' : ` (docs: http://localhost:${PORT}/api/main-point/docs)`}`);
+  app.listen(PORT, HOST, () => {
+    if (process.env.NODE_ENV === "production") {
+      console.log(`[SERVER] Production API listening on port ${PORT}`);
+    } else {
+      console.log(
+        `[SERVER] Local API running at http://localhost:${PORT}`
+      );
+    }
   });
 };
 
