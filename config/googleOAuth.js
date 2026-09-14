@@ -20,7 +20,24 @@ let configured = false;
  *                                     matches the Google Console registration).
  */
 export const getGoogleCallbackUrl = () => {
-  if (process.env.OAUTH_REDIRECT_URI) return process.env.OAUTH_REDIRECT_URI;
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  // Explicit override always wins — BUT in production a stale override that
+  // points at the frontend (Vercel) or localhost is a known footgun: Google
+  // then redirects the browser somewhere the state/session cookie is never
+  // sent, producing INVALID_OAUTH_STATE. Detect it and fall back to the
+  // Render URL while warning loudly.
+  const override = process.env.OAUTH_REDIRECT_URI;
+  if (override) {
+    const looksStale = override.startsWith('http://localhost')
+      || override.includes('127.0.0.1')
+      || override.includes('.vercel.app');
+    if (isProduction && looksStale) {
+      console.warn(`[GOOGLE_OAUTH][CONFIG] Ignoring suspicious OAUTH_REDIRECT_URI in production: ${override}`);
+    } else {
+      return override;
+    }
+  }
 
   if (process.env.RENDER_EXTERNAL_URL) {
     return `${process.env.RENDER_EXTERNAL_URL}/auth/google/callback`;

@@ -49,4 +49,22 @@ export const cookieOptions = (maxAge) => {
   };
 };
 
+/**
+ * Cookie options for the OAuth CSRF state cookie.
+ *
+ * Unlike the session cookie, the state cookie is only ever consumed on the
+ * OAuth callback — a top-level GET navigation from Google back to the API.
+ * SameSite=Lax is sufficient for that (Lax cookies ARE sent on cross-site
+ * top-level navigations) and it avoids the "SameSite=None requires Secure"
+ * blocking rule, so strict browsers are far more likely to store and send it
+ * back than a SameSite=None cookie dropped during a cross-site redirect chain.
+ */
+export const oauthStateCookieOptions = (maxAge) => ({
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: process.env.NODE_ENV === 'production',
+  maxAge,
+  path: '/',
+});
+
 export { STATE_MAX_AGE_MS };

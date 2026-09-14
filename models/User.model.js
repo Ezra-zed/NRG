@@ -89,18 +89,16 @@ const userSchema = new mongoose.Schema(
 /**
  * Hash the password before a save whenever it has been modified
  * (covers signup and password reset).
+ *
+ * Mongoose 9 removed the `next` callback from pre hooks — this hook must
+ * return a promise (async function). Thrown errors reject the save.
  */
-userSchema.pre('save', async function preSaveHashPassword(next) {
-  if (!this.isModified('password')) return next();
-  if (!this.password) return next();
+userSchema.pre('save', async function preSaveHashPassword() {
+  if (!this.isModified('password')) return;
+  if (!this.password) return;
 
-  try {
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-    return next();
-  } catch (error) {
-    return next(error);
-  }
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
 });
 
 /**

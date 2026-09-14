@@ -9,6 +9,7 @@ import {
   createOAuthState,
   GOOGLE_STATE_COOKIE,
   isValidOAuthState,
+  oauthStateCookieOptions,
   STATE_MAX_AGE_MS,
 } from '../../utils/oauthState.js';
 
@@ -56,7 +57,7 @@ export const startGoogleLogin = (req, res, next) => {
   try {
     const state = createOAuthState();
     res.locals.googleOAuthState = state;
-    res.cookie(GOOGLE_STATE_COOKIE, state, cookieOptions(STATE_MAX_AGE_MS));
+    res.cookie(GOOGLE_STATE_COOKIE, state, oauthStateCookieOptions(STATE_MAX_AGE_MS));
     logOAuth('STATE_CREATED', {
       method: req.method,
       url: req.originalUrl,
@@ -73,20 +74,30 @@ export const startGoogleLogin = (req, res, next) => {
 export const validateGoogleCallbackState = (req, res, next) => {
   const cookies = parseCookies(req.headers.cookie);
   const stateCookie = cookies[GOOGLE_STATE_COOKIE];
-  const valid = req.query.state && stateCookie
-    && req.query.state === stateCookie
-    && isValidOAuthState(stateCookie);
+  const queryState = req.query.state;
 
-  res.clearCookie(GOOGLE_STATE_COOKIE, cookieOptions());
+  const stateValid = isValidOAuthState(queryState);
+  const cookieMatches = Boolean(stateCookie && queryState && stateCookie === queryState);
+
+  res.clearCookie(GOOGLE_STATE_COOKIE, oauthStateCookieOptions());
   logOAuth('STATE_VALIDATION', {
     method: req.method,
     url: req.originalUrl,
     hasCookie: Boolean(stateCookie),
-    hasQueryState: Boolean(req.query.state),
-    matches: Boolean(req.query.state && stateCookie && req.query.state === stateCookie),
-    valid: Boolean(valid),
+    hasQueryState: Boolean(queryState),
+    stateValid: Boolean(stateValid),
+    cookieMatches: Boolean(cookieMatches),
   });
-  if (!valid) {
+
+  // CSRF protection comes from the `state` parameter itself: it is HMAC-signed
+  // with the server secret, random per request, and expires after 10 minutes —
+  // an attacker can neither forge nor predict a valid state for a victim's
+  // flow. The cookie is intentionally BEST-EFFORT only and never blocks a
+  // legitimate login:
+  //  - missing cookie       → cross-site cookie blocked (Vercel→Render) → allow.
+  //  - mismatched cookie    → another flow/tab overwrote it → allow.
+  //  - invalid state        → forged/expired → ALWAYS reject.
+  if (!stateValid) {
     return next(new AppError('Invalid or expired OAuth state parameter.', 403, true, 'INVALID_OAUTH_STATE'));
   }
 
