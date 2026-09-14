@@ -13,6 +13,22 @@ import {
 const SESSION_COOKIE = 'nrg_session';
 const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
+const getHomeRedirectUrl = (req) => {
+  const host = (req?.headers?.host || '').toLowerCase();
+  const isLocalHost = host.includes('localhost')
+    || host.includes('127.0.0.1')
+    || host.includes('::1');
+
+  if (isLocalHost) {
+    return process.env.LOCAL_FRONTEND_URL || `http://localhost:${process.env.FRONTEND_PORT || 3000}`;
+  }
+
+  return process.env.PRODUCTION_FRONTEND_URL
+    || process.env.APP_HOME_URL
+    || process.env.FRONTEND_URL
+    || 'https://enrg-front-end-uyv.vercel.app';
+};
+
 const parseCookies = (header = '') => Object.fromEntries(
   header.split(';').map((part) => part.trim().split('='))
     .filter(([name, value]) => name && value)
@@ -64,7 +80,7 @@ export const validateGoogleCallbackState = (req, res, next) => {
   return next();
 };
 
-export const finishGoogleLogin = async (profile, res) => {
+export const finishGoogleLogin = async (profile, req, res) => {
   const email = profile.emails?.[0]?.value?.toLowerCase();
   if (!profile.id || !email) {
     logOAuth('PROFILE_INVALID', {
@@ -100,6 +116,12 @@ export const finishGoogleLogin = async (profile, res) => {
     role: user.role,
     sessionCookie: SESSION_COOKIE,
   });
+
+  const homeUrl = getHomeRedirectUrl(req);
+  if (req && req.accepts && req.accepts('html')) {
+    return res.redirect(homeUrl);
+  }
+
   return res.json({
     success: true,
     data: { user: publicUser(user), token },

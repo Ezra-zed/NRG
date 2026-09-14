@@ -74,7 +74,7 @@ router.get('/google/callback', validateGoogleCallbackState, (req, res, next) => 
       hasEmail: Boolean(profile.emails?.[0]?.value),
       hasDisplayName: Boolean(profile.displayName),
     });
-    return finishGoogleLogin(profile, res).catch(next);
+    return finishGoogleLogin(profile, req, res).catch(next);
   })(req, res, next);
 });
 
