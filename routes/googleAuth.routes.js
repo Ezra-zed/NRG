@@ -35,7 +35,9 @@ router.get('/google', (req, res, next) => {
     if (error) return next(error);
     logOAuthRequest('REDIRECTING_TO_GOOGLE', req, {
       callbackUrl: process.env.OAUTH_REDIRECT_URI
-        || `http://localhost:${process.env.PORT || 5000}/auth/google/callback`,
+        || (process.env.NODE_ENV === 'production'
+          ? 'https://enrg-front-end-uyv.vercel.app/auth/google/callback'
+          : `http://localhost:${process.env.PORT || 5000}/auth/google/callback`),
       scope: ['profile', 'email'],
     });
     return passport.authenticate('google', {
