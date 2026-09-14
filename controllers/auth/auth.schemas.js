@@ -35,8 +35,8 @@ const OAUTH_PROVIDERS = ['google'];
 /**
  * POST /api/signup — role-aware signup schema.
  *
- * Branching: solar seller companies require businessName + gstin, installer
- * companies require licenseNumber, and customers need only basic details.
+ * Branching: company accounts require businessName, GSTIN, and license number;
+ * customers need only basic details.
  * These role-specific fields are enforced with Joi conditionals so all other
  * fields still get validated in one pass.
  */
@@ -50,9 +50,9 @@ export const signupSchema = Joi.object({
     businessName: Joi.string().trim().min(2).empty('').optional().messages({ 'string.min': 'businessName must be at least 2 characters' })
       .when('role', { is: 'seller-co', then: Joi.required().messages({ 'any.required': 'businessName is required for solar-seller-company' }) }),
     gstin: Joi.string().trim().uppercase().empty('').optional()
-      .when('role', { is: 'seller-co', then: Joi.required().messages({ 'any.required': 'gstin is required for solar-seller-company verification' }) }),
+      .when('role', { is: Joi.valid('install-co', 'seller-co'), then: Joi.required().messages({ 'any.required': 'gstin is required for company verification' }) }),
     licenseNumber: Joi.string().trim().min(2).empty('').optional().messages({ 'string.min': 'licenseNumber must be at least 2 characters' })
-      .when('role', { is: 'install-co', then: Joi.required().messages({ 'any.required': 'licenseNumber is required for installer-company verification' }) }),
+      .when('role', { is: Joi.valid('install-co', 'seller-co'), then: Joi.required().messages({ 'any.required': 'licenseNumber is required for company verification' }) }),
   });
 
 /**

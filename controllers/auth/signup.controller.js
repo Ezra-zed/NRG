@@ -25,9 +25,9 @@ import { publicUser } from '../../utils/publicUser.js';
  *               email: { type: string, format: email }
  *               phone: { type: string, example: '+919876543210' }
  *               password: { type: string, minLength: 6, description: 'Required for JWT-auth flows (optional)' }
- *               businessName: { type: string, description: 'Required when role=solar-seller-company' }
- *               gstin: { type: string, description: 'Required when role=solar-seller-company' }
- *               licenseNumber: { type: string, description: 'Required when role=installer-company' }
+ *               businessName: { type: string, description: 'Required for company roles' }
+ *               gstin: { type: string, description: 'Required for company roles' }
+ *               licenseNumber: { type: string, description: 'Required for company roles' }
  *     responses:
  *       '201':
  *         description: Created
@@ -88,9 +88,9 @@ export const signup = async (req, res) => {
     password, // hashed by the User schema pre-save hook
     authProvider: password ? 'JWT-auth' : 'no-password',
     oauthId: undefined,
-    businessName: role === 'seller-co' ? businessName : undefined,
-    gstin: role === 'seller-co' ? gstin : undefined,
-    licenseNumber: role === 'install-co' ? licenseNumber : undefined,
+    businessName: role === 'user' ? undefined : businessName,
+    gstin: role === 'user' ? undefined : gstin,
+    licenseNumber: role === 'user' ? undefined : licenseNumber,
   });
 
   // Password is excluded by the model's toJSON transform.
