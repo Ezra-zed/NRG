@@ -29,7 +29,6 @@ const app = express();
 // browser stores/sends the OAuth session cookie across Vercel (frontend) →
 // Render (API); only known frontend origins may send credentials.
 const corsOrigins = [
-  'https://enrg-front-end-uyv.vercel.app',
   process.env.LOCAL_FRONTEND_URL,
   process.env.PRODUCTION_FRONTEND_URL,
   process.env.FRONTEND_URL,

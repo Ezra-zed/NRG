@@ -24,10 +24,20 @@ const getHomeRedirectUrl = (req) => {
     return process.env.LOCAL_FRONTEND_URL || `http://localhost:${process.env.FRONTEND_PORT || 3000}`;
   }
 
-  return process.env.PRODUCTION_FRONTEND_URL
+  const productionFrontendUrl = process.env.PRODUCTION_FRONTEND_URL
     || process.env.APP_HOME_URL
-    || process.env.FRONTEND_URL
-    || 'https://enrg-front-end-uyv.vercel.app';
+    || process.env.FRONTEND_URL;
+
+  if (!productionFrontendUrl) {
+    throw new AppError(
+      'Google OAuth is missing a production frontend redirect URL.',
+      500,
+      true,
+      'OAUTH_FRONTEND_URL_MISSING',
+    );
+  }
+
+  return productionFrontendUrl;
 };
 
 const logOAuth = (label, details) => {
@@ -103,6 +113,9 @@ export const finishGoogleLogin = async (profile, req, res) => {
     await user.save();
   }
 
+  // Resolve this before setting the session cookie so a configuration error
+  // cannot leave the browser signed in without a valid redirect destination.
+  const homeUrl = getHomeRedirectUrl(req);
   const token = generateToken({ id: user._id.toString(), role: user.role });
   res.cookie(SESSION_COOKIE, token, cookieOptions(SESSION_MAX_AGE_MS));
   logOAuth('LOGIN_SUCCESS', {
@@ -112,7 +125,6 @@ export const finishGoogleLogin = async (profile, req, res) => {
     sessionCookie: SESSION_COOKIE,
   });
 
-  const homeUrl = getHomeRedirectUrl(req);
   if (req && req.accepts && req.accepts('html')) {
     return res.redirect(homeUrl);
   }
