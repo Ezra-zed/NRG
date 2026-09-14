@@ -18,6 +18,8 @@ import errorHandler from './middlewares/errorHandler.js';
 import notFoundHandler from './middlewares/notFoundHandler.js';
 import { UPLOAD_DIR } from './utils/upload.js';
 
+const CURRENT_PRODUCTION_FRONTEND_URL = 'https://enrg-frontend-uyvb.vercel.app';
+
 /**
  * Build & boot the Express application.
  */
@@ -29,6 +31,7 @@ const app = express();
 // browser stores/sends the OAuth session cookie across Vercel (frontend) →
 // Render (API); only known frontend origins may send credentials.
 const corsOrigins = [
+  CURRENT_PRODUCTION_FRONTEND_URL,
   process.env.LOCAL_FRONTEND_URL,
   process.env.PRODUCTION_FRONTEND_URL,
   process.env.FRONTEND_URL,

@@ -13,6 +13,8 @@ import {
 } from '../../utils/oauthState.js';
 
 const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const CURRENT_PRODUCTION_FRONTEND_URL = 'https://enrg-frontend-uyvb.vercel.app';
+const LEGACY_PRODUCTION_FRONTEND_URL = 'https://enrg-front-end-uyv.vercel.app';
 
 const getHomeRedirectUrl = (req) => {
   const host = (req?.headers?.host || '').toLowerCase();
@@ -24,9 +26,15 @@ const getHomeRedirectUrl = (req) => {
     return process.env.LOCAL_FRONTEND_URL || `http://localhost:${process.env.FRONTEND_PORT || 3000}`;
   }
 
-  const productionFrontendUrl = process.env.PRODUCTION_FRONTEND_URL
+  const configuredProductionFrontendUrl = process.env.PRODUCTION_FRONTEND_URL
     || process.env.APP_HOME_URL
     || process.env.FRONTEND_URL;
+
+  // The former Vercel alias was deleted. Preserve an explicitly configured
+  // replacement, but migrate the known dead value during the transition.
+  const productionFrontendUrl = configuredProductionFrontendUrl === LEGACY_PRODUCTION_FRONTEND_URL
+    ? CURRENT_PRODUCTION_FRONTEND_URL
+    : configuredProductionFrontendUrl || CURRENT_PRODUCTION_FRONTEND_URL;
 
   if (!productionFrontendUrl) {
     throw new AppError(
