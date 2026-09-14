@@ -89,17 +89,21 @@ add this authorized redirect URI for local development:
 http://localhost:5000/auth/google/callback
 ```
 
-For the deployed app, add the production callback (registered in Google Cloud
-Console):
+For the deployed API (e.g. Render), add the public callback too — the callback
+must hit the **API**, not the static frontend, because the auth-code exchange
+happens in this backend route:
 
 ```text
-https://enrg-front-end-uyv.vercel.app/auth/google/callback
+https://<your-render-app>.onrender.com/auth/google/callback
 ```
 
 Set `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `JWT_SECRET`, and `PORT` in `.env`.
-In production the callback defaults to the Vercel app URL above; set
-`OAUTH_REDIRECT_URI` to override it — a mismatch with the Google Console
-registration produces Google's `Error 400: redirect_uri_mismatch`.
+On Render the callback defaults to `RENDER_EXTERNAL_URL`; set `OAUTH_REDIRECT_URI`
+to override it (e.g. when using a custom domain). A mismatch with the Google
+Console registration produces Google's `Error 400: redirect_uri_mismatch`.
+Never register the frontend URL as the redirect — the SPA has no callback route,
+and pointing Google there shows Vercel's `404 DEPLOYMENT_NOT_FOUND` / drops the
+auth code.
 
 The callback creates or finds the local user by Google ID/email, signs the
 existing application JWT, and stores it in an `httpOnly` cookie named

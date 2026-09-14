@@ -3,9 +3,6 @@ import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 
 let configured = false;
 
-const PRODUCTION_CALLBACK_URL = 'https://enrg-front-end-uyv.vercel.app/auth/google/callback';
-const DEVELOPMENT_CALLBACK_URL = 'http://localhost:5000/auth/google/callback';
-
 /**
  * Resolve the OAuth redirect URI.
  *
@@ -13,18 +10,23 @@ const DEVELOPMENT_CALLBACK_URL = 'http://localhost:5000/auth/google/callback';
  *  1. OAUTH_REDIRECT_URI            — explicit, always wins. Must exactly match
  *                                     a URI registered in Google Cloud Console →
  *                                     Credentials.
- *  2. http://localhost:5000/...     — local development default (the port is
+ *  2. RENDER_EXTERNAL_URL           — Render injects this automatically
+ *                                     (e.g. https://nrg-api.onrender.com).
+ *                                     The callback MUST hit this API — the code
+ *                                     exchange happens in /auth/google/callback
+ *                                     here, not on the static frontend.
+ *  3. http://localhost:5000/...     — local development default (the port is
  *                                     FIXED, not taken from PORT, so it always
  *                                     matches the Google Console registration).
- *  3. Production (Vercel) callback  — https://enrg-front-end-uyv.vercel.app/
- *                                     auth/google/callback.
  */
 export const getGoogleCallbackUrl = () => {
   if (process.env.OAUTH_REDIRECT_URI) return process.env.OAUTH_REDIRECT_URI;
 
-  if (process.env.NODE_ENV !== 'production') return DEVELOPMENT_CALLBACK_URL;
+  if (process.env.RENDER_EXTERNAL_URL) {
+    return `${process.env.RENDER_EXTERNAL_URL}/auth/google/callback`;
+  }
 
-  return PRODUCTION_CALLBACK_URL;
+  return 'http://localhost:5000/auth/google/callback';
 };
 
 export const configureGoogleStrategy = () => {
@@ -35,11 +37,14 @@ export const configureGoogleStrategy = () => {
     throw new Error('OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET must be set for Google OAuth.');
   }
 
+  const callbackURL = getGoogleCallbackUrl();
+  console.log(`[GOOGLE_OAUTH][CONFIG] callbackURL=${callbackURL}`);
+
   passport.use('google', new GoogleStrategy(
     {
       clientID,
       clientSecret,
-      callbackURL: getGoogleCallbackUrl(),
+      callbackURL,
     },
     (_accessToken, _refreshToken, profile, done) => done(null, profile),
   ));

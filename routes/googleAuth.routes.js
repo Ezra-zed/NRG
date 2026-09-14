@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import passport from '../config/googleOAuth.js';
-import { configureGoogleStrategy } from '../config/googleOAuth.js';
+import { configureGoogleStrategy, getGoogleCallbackUrl } from '../config/googleOAuth.js';
 import {
   finishGoogleLogin,
   getCurrentUser,
@@ -34,10 +34,7 @@ router.get('/google', (req, res, next) => {
   return startGoogleLogin(req, res, (error) => {
     if (error) return next(error);
     logOAuthRequest('REDIRECTING_TO_GOOGLE', req, {
-      callbackUrl: process.env.OAUTH_REDIRECT_URI
-        || (process.env.NODE_ENV === 'production'
-          ? 'https://enrg-front-end-uyv.vercel.app/auth/google/callback'
-          : `http://localhost:${process.env.PORT || 5000}/auth/google/callback`),
+      callbackUrl: getGoogleCallbackUrl(),
       scope: ['profile', 'email'],
     });
     return passport.authenticate('google', {
@@ -86,6 +83,6 @@ router.get('/google/callback', validateGoogleCallbackState, (req, res, next) => 
 // `credentials: 'include'` on load to restore the session.
 router.get('/me', getCurrentUser);
 
-router.get('/logout', logout);
+router.post('/logout', logout);
 
 export default router;

@@ -40,8 +40,20 @@ export const validate = (schema, source = "body") => {
       return next(error);
     }
 
-    // Replace request data with Joi's parsed/sanitized data.
-    req[source] = value;
+    // Replace request data with Joi's parsed/sanitized data. Express 5 exposes
+    // `req.query` as a getter without a setter, so direct assignment throws.
+    // Define an own property to preserve the same sanitized-query contract the
+    // rest of the application uses, while leaving body and params unchanged.
+    if (source === 'query') {
+      Object.defineProperty(req, 'query', {
+        configurable: true,
+        enumerable: true,
+        value,
+        writable: true,
+      });
+    } else {
+      req[source] = value;
+    }
 
     return next();
   };
