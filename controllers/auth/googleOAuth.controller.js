@@ -1,7 +1,9 @@
 import User from '../../models/User.model.js';
 import AppError from '../../utils/AppError.js';
 import { generateToken } from '../../utils/jwt.js';
+import { verifyToken } from '../../utils/jwt.js';
 import { publicUser } from '../../utils/publicUser.js';
+import { parseCookies, SESSION_COOKIE } from '../../utils/cookies.js';
 import {
   cookieOptions,
   createOAuthState,
@@ -10,7 +12,6 @@ import {
   STATE_MAX_AGE_MS,
 } from '../../utils/oauthState.js';
 
-const SESSION_COOKIE = 'nrg_session';
 const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 const getHomeRedirectUrl = (req) => {
@@ -28,12 +29,6 @@ const getHomeRedirectUrl = (req) => {
     || process.env.FRONTEND_URL
     || 'https://enrg-front-end-uyv.vercel.app';
 };
-
-const parseCookies = (header = '') => Object.fromEntries(
-  header.split(';').map((part) => part.trim().split('='))
-    .filter(([name, value]) => name && value)
-    .map(([name, ...value]) => [name, decodeURIComponent(value.join('='))]),
-);
 
 const logOAuth = (label, details) => {
   console.log(`[GOOGLE_OAUTH][${label}]`, JSON.stringify(details));
@@ -128,6 +123,46 @@ export const finishGoogleLogin = async (profile, req, res) => {
     message: `Signed in with Google${created ? ' — account created' : ''}`,
     error: null,
   });
+};
+
+/**
+ * GET /auth/me — resolve the current signed-in user.
+ *
+ * Lets the frontend restore the session on load: with `credentials: 'include'`
+ * the browser sends the nrg_session cookie and this returns the signed-in user,
+ * so the user "stays signed in" across reloads until the cookie expires (7d).
+ */
+export const getCurrentUser = async (req, res, next) => {
+  try {
+    const cookies = parseCookies(req.headers.cookie);
+    const token = cookies[SESSION_COOKIE];
+    if (!token) {
+      return res.json({ success: true, data: { user: null }, message: 'Not signed in.', error: null });
+    }
+
+    let decoded;
+    try {
+      decoded = verifyToken(token);
+    } catch {
+      res.clearCookie(SESSION_COOKIE, cookieOptions());
+      return res.json({ success: true, data: { user: null }, message: 'Session expired.', error: null });
+    }
+
+    const user = await User.findById(decoded.id).select('-password');
+    if (!user) {
+      res.clearCookie(SESSION_COOKIE, cookieOptions());
+      return res.json({ success: true, data: { user: null }, message: 'Session expired.', error: null });
+    }
+
+    return res.json({
+      success: true,
+      data: { user: publicUser(user), token },
+      message: 'Signed in.',
+      error: null,
+    });
+  } catch (error) {
+    return next(error);
+  }
 };
 
 export const logout = (_req, res) => {

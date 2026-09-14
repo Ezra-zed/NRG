@@ -36,12 +36,17 @@ export const isValidOAuthState = (value) => {
     && timingSafeEqual(actualBuffer, expectedBuffer);
 };
 
-export const cookieOptions = (maxAge) => ({
-  httpOnly: true,
-  sameSite: 'lax',
-  secure: process.env.NODE_ENV === 'production',
-  maxAge,
-  path: '/',
-});
+export const cookieOptions = (maxAge) => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  return {
+    httpOnly: true,
+    // Production frontends are cross-site (Vercel → Render API); the browser
+    // only accepts/sends cookies cross-site with SameSite=None + Secure.
+    sameSite: isProduction ? 'none' : 'lax',
+    secure: isProduction,
+    maxAge,
+    path: '/',
+  };
+};
 
 export { STATE_MAX_AGE_MS };

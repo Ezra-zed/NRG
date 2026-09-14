@@ -89,8 +89,30 @@ add this authorized redirect URI for local development:
 http://localhost:5000/auth/google/callback
 ```
 
+For the deployed API (e.g. Render), add the public callback too:
+
+```text
+https://<your-render-app>.onrender.com/auth/google/callback
+```
+
 Set `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `JWT_SECRET`, and `PORT` in `.env`.
+In production set `OAUTH_REDIRECT_URI` (or rely on Render's `RENDER_EXTERNAL_URL`)
+so the callback host never falls back to `localhost` — a mismatch produces
+Google's `Error 400: redirect_uri_mismatch`.
+
 The callback creates or finds the local user by Google ID/email, signs the
 existing application JWT, and stores it in an `httpOnly` cookie named
-`nrg_session`. The existing JSON `/api/signin` OAuth strategy remains available
+`nrg_session`. The session is restored via:
+
+```http
+GET /auth/me          # → { data: { user } } when signed in, { data: { user: null } } otherwise
+GET /auth/logout      # clears the session cookie
+```
+
+`GET /auth/me` must be called with `credentials: 'include'` from the frontend,
+which requires `CORS` origins to be allow-listed (see server.js). In production
+the cookies use `SameSite=None; Secure` because the Vercel frontend and Render
+API are cross-site.
+
+The existing JSON `/api/signin` OAuth strategy remains available
 for clients that already send a Google access token directly.

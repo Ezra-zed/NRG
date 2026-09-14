@@ -25,7 +25,17 @@ import { UPLOAD_DIR } from './utils/upload.js';
 const app = express();
 
 // --- Global middleware -------------------------------------------------------
-app.use(cors());                 // Cross-origin access for the frontends
+// Cross-origin access for the frontends. `credentials` is required so the
+// browser stores/sends the OAuth session cookie across Vercel (frontend) →
+// Render (API); only known frontend origins may send credentials.
+const corsOrigins = [
+  'https://enrg-front-end-uyv.vercel.app',
+  process.env.LOCAL_FRONTEND_URL,
+  process.env.PRODUCTION_FRONTEND_URL,
+  process.env.FRONTEND_URL,
+  process.env.APP_HOME_URL,
+].filter(Boolean);
+app.use(cors({ origin: corsOrigins, credentials: true }));
 app.use(express.json());         // JSON bodies
 app.use(express.urlencoded({ extended: true })); // form bodies
 app.use(passport.initialize());  // Passport is used by the Google code flow

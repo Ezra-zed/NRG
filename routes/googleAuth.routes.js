@@ -3,6 +3,7 @@ import passport from '../config/googleOAuth.js';
 import { configureGoogleStrategy } from '../config/googleOAuth.js';
 import {
   finishGoogleLogin,
+  getCurrentUser,
   logout,
   startGoogleLogin,
   validateGoogleCallbackState,
@@ -77,6 +78,11 @@ router.get('/google/callback', validateGoogleCallbackState, (req, res, next) => 
     return finishGoogleLogin(profile, req, res).catch(next);
   })(req, res, next);
 });
+
+// GET /auth/me — returns the signed-in user from the nrg_session cookie
+// (or user: null when no valid session exists). Frontend calls this with
+// `credentials: 'include'` on load to restore the session.
+router.get('/me', getCurrentUser);
 
 router.get('/logout', logout);
 

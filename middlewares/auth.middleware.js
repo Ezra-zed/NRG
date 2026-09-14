@@ -1,14 +1,17 @@
 import AppError from '../utils/AppError.js';
 import { verifyToken } from '../utils/jwt.js';
+import { extractToken } from '../utils/cookies.js';
 import User from '../models/User.model.js';
 
 /**
  * Authentication middleware.
  *
- * Reads `Authorization: Bearer <token>` from the request headers, verifies the
- * JWT with utils/jwt (which also enforces JWT_SECRET), reloads the user from
- * MongoDB so deleted/suspended accounts are rejected, and attaches the user
- * document to req.user for downstream handlers.
+ * Accepts the JWT from either `Authorization: Bearer <token>` (API clients) or
+ * the `nrg_session` httpOnly cookie set by the Google OAuth callback (browser
+ * sessions). The token is verified with utils/jwt (which also enforces
+ * JWT_SECRET), the user is reloaded from MongoDB so deleted/suspended accounts
+ * are rejected, and the user document is attached to req.user for downstream
+ * handlers.
  *
  * @swagger
  * securityDefinitions:
@@ -17,16 +20,15 @@ import User from '../models/User.model.js';
  *     scheme: bearer
  *     bearerFormat: JWT
  *
- * @throws {AppError} 401 when the header/token is missing or invalid.
+ * @throws {AppError} 401 when no token is present or the token is invalid.
  * @throws {AppError} 401 when the user no longer exists.
  */
 export default async function authenticate(req, _res, next) {
   try {
-    const header = req.headers.authorization || '';
-    const [scheme, token] = header.split(' ');
+    const token = extractToken(req);
 
-    if (!token || scheme.toLowerCase() !== 'bearer') {
-      throw new AppError('Not authenticated. Provide a Bearer token.', 401);
+    if (!token) {
+      throw new AppError('Not authenticated. Provide a Bearer token or session cookie.', 401);
     }
 
     let decoded;
