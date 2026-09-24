@@ -14,6 +14,7 @@ import projectRoutes from './routes/project.routes.js';
 import companyRoutes from './routes/company.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import companyAssistantRoutes from './routes/companyAssistant.routes.js';
+import healthRoutes from './routes/health.routes.js';
 import errorHandler from './middlewares/errorHandler.js';
 import notFoundHandler from './middlewares/notFoundHandler.js';
 import { UPLOAD_DIR } from './utils/upload.js';
@@ -49,6 +50,8 @@ app.use('/uploads', express.static(UPLOAD_DIR));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 // ---------- API routes --------------------------------------------------------
+// Health probe first: cheap, dependency-free, always mounted.
+app.use('/health', healthRoutes);
 app.use('/api/home', homeRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/customers', customerRoutes);

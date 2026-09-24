@@ -1,0 +1,26 @@
+# Secrets — NEVER bake these into an image
+.env
+.env.*
+!.env.example
+
+# Dependencies (installed inside the image)
+node_modules
+
+# Git & CI
+.git
+.github
+
+# Tests & local tooling (not needed in the production image)
+test
+infra
+.tools
+.context
+.img
+
+# Runtime uploads (volume-mounted, not baked in)
+uploads
+
+# Docs & OS noise
+README.md
+*.log
+.DS_Store

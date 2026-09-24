@@ -1,0 +1,70 @@
+# Local development stack for the NRG backend.
+#
+# Usage:
+#   docker compose up -d                # build & start api + mongo
+#   docker compose logs -f api          # follow API logs
+#   docker compose down                 # stop & remove
+#   docker compose down -v              # also wipe the mongo data volume
+#
+# The API builds from ./Dockerfile and runs with NODE_ENV=development.
+# Env vars come from .env (same file `npm run dev` uses) — see .env.example.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: enrg-api
+    restart: unless-stopped
+    ports:
+      - "${PORT:-5000}:5000"
+    env_file:
+      - .env
+    environment:
+      # Inside the compose network mongo is reachable as the service name.
+      MONGO_URI: mongodb://mongo:27017/enrg
+      NODE_ENV: development
+    volumes:
+      # Hot reload without rebuilds… except nodemon is a devDependency, so
+      # the production image runs plain `node`. Restart instead:
+      #   docker compose restart api
+      - ./server.js:/app/server.js:ro
+      - ./config:/app/config:ro
+      - ./controllers:/app/controllers:ro
+      - ./middlewares:/app/middlewares:ro
+      - ./models:/app/models:ro
+      - ./routes:/app/routes:ro
+      - ./services:/app/services:ro
+      - ./utils:/app/utils:ro
+      # Persist uploaded files (multer disk storage) outside the container.
+      - uploads:/app/uploads
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:' + (Number(process.env.PORT) || 5000) + '/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  mongo:
+    image: mongo:7
+    container_name: enrg-mongo
+    restart: unless-stopped
+    ports:
+      # Exposed so host tools (Compass, scripts, `npm run dev` outside docker)
+      # can reach the DB directly.
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+
+volumes:
+  mongo_data:
+  uploads:
