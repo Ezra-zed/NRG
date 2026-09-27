@@ -20,13 +20,16 @@ export const parseCookies = (header = '') => Object.fromEntries(
 
 /**
  * Extract the auth token from a request.
- * Order: `Authorization: Bearer <token>` header first (API clients),
- * then the `nrg_session` cookie (browser sessions after OAuth).
+ * Order: `nrg_session` cookie first (browser sessions), then
+ * `Authorization: Bearer <token>` (API clients and non-cookie sessions).
  */
 export const extractToken = (req) => {
+  const cookieToken = parseCookies(req.headers.cookie)[SESSION_COOKIE];
+  if (cookieToken) return cookieToken;
+
   const header = req.headers.authorization || '';
   const [scheme, token] = header.split(' ');
   if (token && scheme.toLowerCase() === 'bearer') return token;
 
-  return parseCookies(req.headers.cookie)[SESSION_COOKIE] || null;
+  return null;
 };

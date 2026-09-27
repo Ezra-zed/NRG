@@ -3,7 +3,7 @@ import AppError from '../../../utils/AppError.js';
 import { generateToken } from '../../../utils/jwt.js';
 
 /**
- * Verify a Google token issued directly by Google or through Supabase Auth.
+ * Verify a Google access token directly with Google.
  *
  * @param {'google'} provider OAuth provider name.
  * @param {string} token OAuth access token from the client.
@@ -14,41 +14,6 @@ import { generateToken } from '../../../utils/jwt.js';
 async function verifyOAuthToken(provider, token) {
   if (provider !== 'google') {
     throw new AppError(`OAuth provider ${provider} is not configured.`, 501);
-  }
-
-  const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, '');
-  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
-
-  if (supabaseUrl && !supabaseAnonKey) {
-    throw new AppError('SUPABASE_ANON_KEY is required when SUPABASE_URL is configured.', 501);
-  }
-
-  if (supabaseUrl && supabaseAnonKey) {
-    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        apikey: supabaseAnonKey,
-      },
-      signal: AbortSignal.timeout(5000),
-    });
-
-    if (response.ok) {
-      const profile = await response.json();
-      const metadata = profile.user_metadata || {};
-      const googleIdentity = profile.identities?.find((identity) => identity.provider === 'google');
-      const providerId = googleIdentity?.identity_data?.sub || profile.id;
-
-      if (!providerId || !profile.email) {
-        throw new AppError('Supabase OAuth profile is incomplete.', 401);
-      }
-
-      return {
-        id: `google-${providerId}`,
-        email: profile.email,
-        name: metadata.full_name || metadata.name || profile.email,
-        provider,
-      };
-    }
   }
 
   if (!process.env.OAUTH_CLIENT_ID) {

@@ -39,17 +39,17 @@ const leadsQuerySchema = Joi.object({
 });
 
 const updateLeadSchema = Joi.object({
-    status: Joi.string().valid(...leadStatusEnum).optional(),
-    quote: Joi.object({
-        estimatedPrice: Joi.number().min(0).required(),
-        warrantyYears: Joi.number().min(0).optional(),
-        notes: Joi.string().trim().max(1000).optional(),
-      })
-      .min(1)
-      .optional(),
-  }).or('status', 'quote').messages({
-    'object.missing': 'Provide either status or quote to update the lead.',
-  });
+  status: Joi.string().valid(...leadStatusEnum).optional(),
+  quote: Joi.object({
+    estimatedPrice: Joi.number().min(0).required(),
+    warrantyYears: Joi.number().min(0).optional(),
+    notes: Joi.string().trim().max(1000).optional(),
+  })
+    .min(1)
+    .optional(),
+}).or('status', 'quote').messages({
+  'object.missing': 'Provide either status or quote to update the lead.',
+});
 
 /**
  * POST /api/companies/profile — multipart/form-data.
