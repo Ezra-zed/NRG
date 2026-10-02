@@ -19,7 +19,7 @@ import errorHandler from './middlewares/errorHandler.js';
 import notFoundHandler from './middlewares/notFoundHandler.js';
 import { UPLOAD_DIR } from './utils/upload.js';
 
-const CURRENT_PRODUCTION_FRONTEND_URL = 'https://enrg-frontend-uyvb.vercel.app';
+const CURRENT_PRODUCTION_FRONTEND_URL = 'https://www.enrg.co.in'; // Update this to your actual production frontend URL
 
 /**
  * Build & boot the Express application.
