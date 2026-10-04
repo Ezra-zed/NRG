@@ -11,7 +11,6 @@ import {
   revokeAuthSession,
 } from '../../utils/authSession.js';
 import {
-  cookieOptions,
   createOAuthState,
   GOOGLE_STATE_COOKIE,
   isValidOAuthState,
@@ -158,7 +157,7 @@ export const finishGoogleLogin = async (profile, req, res) => {
 };
 
 /**
- * GET /auth/me — resolve the current signed-in user.
+ * GET /auth/me — resolve the current signed-in user or return 401.
  *
  * Lets the frontend restore the session on load: with `credentials: 'include'`
  * the browser sends the nrg_session cookie and this returns the signed-in user,
@@ -167,24 +166,30 @@ export const finishGoogleLogin = async (profile, req, res) => {
  */
 export const getCurrentUser = async (req, res, next) => {
   try {
-    res.set('Cache-Control', 'no-store');
+    res.set({
+      'Cache-Control': 'private, no-store, no-cache, must-revalidate, proxy-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
+    });
+    res.vary('Cookie');
+    res.vary('Authorization');
     const cookies = parseCookies(req.headers.cookie);
     const token = cookies[SESSION_COOKIE];
     if (!token) {
-      return res.json({ success: true, data: { user: null }, message: 'Not signed in.', error: null });
+      return next(new AppError('Not authenticated.', 401));
     }
 
     let decoded;
     try {
       decoded = verifyToken(token);
     } catch {
-      res.clearCookie(SESSION_COOKIE, cookieOptions());
-      return res.json({ success: true, data: { user: null }, message: 'Session expired.', error: null });
+      clearAuthCookies(res);
+      return next(new AppError('Session expired.', 401));
     }
 
     if (decoded.typ !== 'access' || typeof decoded.sid !== 'string' || typeof decoded.id !== 'string') {
-      res.clearCookie(SESSION_COOKIE, cookieOptions());
-      return res.json({ success: true, data: { user: null }, message: 'Session expired.', error: null });
+      clearAuthCookies(res);
+      return next(new AppError('Session expired.', 401));
     }
 
     const session = await AuthSession.findOne({
@@ -195,13 +200,13 @@ export const getCurrentUser = async (req, res, next) => {
     }).select('_id').lean();
     if (!session) {
       clearAuthCookies(res);
-      return res.json({ success: true, data: { user: null }, message: 'Session expired.', error: null });
+      return next(new AppError('Session expired.', 401));
     }
 
     const user = await User.findById(decoded.id).select('-password');
     if (!user) {
       clearAuthCookies(res);
-      return res.json({ success: true, data: { user: null }, message: 'Session expired.', error: null });
+      return next(new AppError('Session expired.', 401));
     }
 
     return res.json({

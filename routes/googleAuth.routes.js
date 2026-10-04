@@ -78,10 +78,16 @@ router.get('/google/callback', validateGoogleCallbackState, (req, res, next) => 
   })(req, res, next);
 });
 
-// GET /auth/me — returns the signed-in user from the nrg_session cookie
-// (or user: null when no valid session exists). Frontend calls this with
-// `credentials: 'include'` on load to restore the session.
-router.get('/me', getCurrentUser);
+// GET /auth/me — returns the signed-in user from the nrg_session cookie.
+// Frontend calls this with `credentials: 'include'` on load to restore session.
+router.get('/me', (req, res, next) => {
+  // Express can return 304 from an ETag match before the controller responds,
+  // even for no-store responses. Never let caller or intermediary validators
+  // turn this credential check into a cache hit.
+  delete req.headers['if-none-match'];
+  delete req.headers['if-modified-since'];
+  return getCurrentUser(req, res, next);
+});
 
 router.post('/logout', logout);
 
