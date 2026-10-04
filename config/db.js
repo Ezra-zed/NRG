@@ -22,8 +22,8 @@ export default async function connectDB() {
     console.log(`[DB] Connected successfully → ${conn.connection.host}/${conn.connection.name}`);
     return conn.connection;
   } catch (error) {
-    console.error(`[DB] Connection FAILED → ${uri}`);
-    console.error(`[DB] Reason: ${error.message}`);
+    console.error('[DB] Connection FAILED.');
+    console.error(`[DB] Reason: ${error.name || 'DatabaseError'}${error.code ? ` (code ${error.code})` : ''}`);
     // eslint-disable-next-line no-process-exit
     process.exit(1);
   }

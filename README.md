@@ -18,10 +18,12 @@ Production-ready Node.js (ES Modules) + Express + MongoDB (Mongoose) API.
 ```bash
 npm install
 cp .env.example .env      # then fill in MONGO_URI, JWT_SECRET, …
-npm run dev               # node --watch server.js
+npm run dev               # nodemon server.js
 ```
 
 Requires Node.js ≥ 18.11 (latest LTS recommended).
+Set `NODE_ENV` explicitly to `development` or `production`. Production also
+requires a `JWT_SECRET` of at least 32 characters.
 
 The project request bill upload requires `CLOUDINARY_CLOUD_NAME`,
 `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in `.env`. Bills are uploaded
@@ -53,14 +55,16 @@ metadata are stored in MongoDB.
 | `GET  /api/home?type=on-grid\|off-grid\|hybrid-grid`     | Home product collections per solution type    |
 | `POST /api/signup`                                       | Registration for customer / installer company / solar seller company |
 | `POST /api/signin`              | Single endpoint → OAuth / JWT / no-password strategies |
+| `POST /api/refresh`              | Rotate the refresh token and issue a new access token |
+| `POST /api/logout`               | Revoke the current session and clear auth cookies |
 | `GET  /auth/google`             | Start Google OAuth authorization-code login |
 | `GET  /auth/google/callback`    | Complete Google login and set the session cookie |
-| `GET  /auth/logout`              | Clear the Google session cookie |
+| `POST /auth/logout`              | Revoke the current session and clear auth cookies |
 | `GET  /api/marketplace?category=...&page=&limit=&minPrice=&maxPrice=&sortBy=` | Product catalogue |
-| `GET  /api/main-point/complain/listing`                  | Paginated complaints (populated users)          |
-| `POST /api/main-point/complain/call-log`                | Log a follow-up call                            |
-| `POST /api/main-point/complain/company/:id`              | File a complaint against a company              |
-| `GET  /api/main-point/installer/company/:id`             | Installer company teams (team1/2/3)             |
+| `GET  /api/main-point/complain/listing`                  | Complaints for administrators or verified companies |
+| `POST /api/main-point/complain/call-log`                | Log a follow-up call as an administrator or verified company |
+| `POST /api/main-point/complain/company/:id`              | File a complaint as the authenticated customer     |
+| `GET  /api/main-point/installer/company/:id`             | View an installer team's data as its company or an administrator |
 | `GET  /api/main-point/docs`                              | Interactive Swagger UI                          |
 
 Every response uses the shape:
@@ -106,18 +110,41 @@ and pointing Google there shows Vercel's `404 DEPLOYMENT_NOT_FOUND` / drops the
 auth code.
 
 The callback creates or finds the local user by Google ID/email, signs the
-existing application JWT, and stores it in an `httpOnly` cookie named
-`nrg_session`. The session is restored via:
+existing application session, and stores a short-lived access JWT in the
+HttpOnly `nrg_session` cookie. A separate opaque refresh token is stored in the
+HttpOnly `nrg_refresh` cookie; it is hashed in MongoDB, rotated on every refresh,
+and revoked on logout or reuse. Access JWTs expire after 15 minutes, and refresh
+sessions expire after 30 days. Sign-up and all sign-in strategies use this same
+session flow and still return the short-lived access token in the JSON response
+for API clients.
+Clients should serialize refresh attempts: concurrent use of the same refresh
+token is treated as replay and revokes that session.
 
 ```http
 GET /auth/me          # → { data: { user } } when signed in, { data: { user: null } } otherwise
-GET /auth/logout      # clears the session cookie
+POST /api/refresh     # requires cookies and returns a new access token
+POST /api/logout      # revokes the session and clears both cookies
 ```
 
 `GET /auth/me` must be called with `credentials: 'include'` from the frontend,
-which requires `CORS` origins to be allow-listed (see server.js). In production
-the cookies use `SameSite=None; Secure` because the Vercel frontend and Render
-API are cross-site.
+as must refresh and logout. Configure the frontend origin in the environment;
+CORS allows credentials only for configured origins. In production cookies use
+`SameSite=None; Secure` for cross-site frontend/API deployments, and unsafe
+cookie-authenticated requests are checked against the allowed origin list.
+Cookie-authenticated unsafe requests must include an allowed `Origin` or
+`Referer`; non-browser clients should use bearer credentials rather than cookies.
+Keep access tokens in memory on the frontend; do not persist them in
+`localStorage` or `sessionStorage`.
+
+The public customer-registration form creates a customer inquiry only; it does
+not create or authenticate an account based on an unverified phone number.
+Customer listings require an administrator session, and electricity bills are
+downloadable only through an authorized API route. Company lead operations
+require administrator verification.
+
+The no-password OTP strategy has no production OTP provider configured and
+returns an error unless one is integrated. A deliberately unsafe OTP stub can
+only be enabled for local development with `ENABLE_DEV_OTP_STUB=true`.
 
 The existing JSON `/api/signin` OAuth strategy remains available
 for clients that already send a Google access token directly.

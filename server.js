@@ -18,8 +18,9 @@ import healthRoutes from './routes/health.routes.js';
 import errorHandler from './middlewares/errorHandler.js';
 import notFoundHandler from './middlewares/notFoundHandler.js';
 import { UPLOAD_DIR } from './utils/upload.js';
-
-const CURRENT_PRODUCTION_FRONTEND_URL = 'https://www.enrg.co.in'; // Update this to your actual production frontend URL
+import protectCookieAuthenticatedWrites from './middlewares/csrf.middleware.js';
+import { getAllowedOrigins } from './utils/securityConfig.js';
+import Customer from './models/Customer.model.js';
 
 /**
  * Build & boot the Express application.
@@ -27,24 +28,53 @@ const CURRENT_PRODUCTION_FRONTEND_URL = 'https://www.enrg.co.in'; // Update this
 
 const app = express();
 
+if (!['development', 'production'].includes(process.env.NODE_ENV)) {
+  throw new Error('NODE_ENV must be explicitly set to development or production.');
+}
+
 // --- Global middleware -------------------------------------------------------
 // Cross-origin access for the frontends. `credentials` is required so the
 // browser stores/sends the OAuth session cookie across Vercel (frontend) →
 // Render (API); only known frontend origins may send credentials.
-const corsOrigins = [
-  CURRENT_PRODUCTION_FRONTEND_URL,
-  process.env.LOCAL_FRONTEND_URL,
-  process.env.PRODUCTION_FRONTEND_URL,
-  process.env.FRONTEND_URL,
-  process.env.APP_HOME_URL,
-].filter(Boolean);
-app.use(cors({ origin: corsOrigins, credentials: true }));
+const corsOrigins = new Set(getAllowedOrigins());
+app.use(cors({
+  origin(origin, callback) {
+    callback(null, !origin || corsOrigins.has(origin));
+  },
+  credentials: true,
+}));
+app.use(protectCookieAuthenticatedWrites);
 app.use(express.json());         // JSON bodies
 app.use(express.urlencoded({ extended: true })); // form bodies
 app.use(passport.initialize());  // Passport is used by the Google code flow
 
-// Uploaded files are served statically (photos, bills, certificates).
-app.use('/uploads', express.static(UPLOAD_DIR));
+// Private customer bills are never exposed through the public static mount.
+app.use('/uploads/private', (_req, res) => res.sendStatus(404));
+
+// Older customer bills used public URLs; block those URLs and keep access to
+// their files behind the authenticated customer-bill endpoint.
+app.use('/uploads', async (req, res, next) => {
+  const fileName = req.path.replace(/^\/+/, '');
+  if (!fileName || fileName.includes('/')) return next();
+  try {
+    const legacyBill = await Customer.exists({ electricityBill: `uploads/${fileName}` });
+    if (legacyBill) return res.sendStatus(404);
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// Keep public media from being interpreted as active same-origin content.
+app.use('/uploads', express.static(UPLOAD_DIR, {
+  setHeaders(res, filePath) {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    if (/\.(?:html?|svg|xml|js)$/i.test(filePath)) {
+      res.setHeader('Content-Disposition', 'attachment');
+    }
+  },
+}));
 
 // Request logging (dev → colored concise, prod → combined).
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));

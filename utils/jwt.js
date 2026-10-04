@@ -1,16 +1,16 @@
 import jwt from 'jsonwebtoken';
 
 /**
- * JWT helpers — generateToken() and verifyToken().
+ * JWT helpers — access tokens are short-lived and tied to a server-side session.
  *
- * Secrets are read from the environment; JWT_SECRET is mandatory.
- * JWT_EXPIRES_IN controls token lifetime (e.g. "7d", "2h", "30m").
+ * JWT_SECRET is mandatory. Access-token lifetime is fixed at 15 minutes;
+ * refresh tokens are opaque, stored separately, and never JWTs.
  */
 
 const getSecret = () => {
   const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new Error('JWT_SECRET environment variable is not set. Refusing to sign/verify tokens.');
+  if (!secret || (process.env.NODE_ENV !== 'development' && secret.length < 32)) {
+    throw new Error('JWT_SECRET must be configured with at least 32 characters outside development.');
   }
   return secret;
 };
@@ -18,13 +18,18 @@ const getSecret = () => {
 /**
  * Generate a signed JWT identifying the given user.
  *
- * @param {{ id: string, role: string }} payload Token payload (userId + role).
+ * @param {{ id: string, role: string, sid: string, typ: 'access' }} payload
+ *   Token payload (userId, current role, and active session).
  * @returns {string} Signed JWT.
  */
 export const generateToken = (payload) => {
   const secret = getSecret();
-  const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
-  return jwt.sign(payload, secret, { expiresIn, issuer: 'nrg-api' });
+  return jwt.sign(payload, secret, {
+    algorithm: 'HS256',
+    audience: 'nrg-client',
+    expiresIn: '15m',
+    issuer: 'nrg-api',
+  });
 };
 
 /**
@@ -37,5 +42,9 @@ export const generateToken = (payload) => {
  */
 export const verifyToken = (token) => {
   const secret = getSecret();
-  return jwt.verify(token, secret, { issuer: 'nrg-api' });
+  return jwt.verify(token, secret, {
+    algorithms: ['HS256'],
+    audience: 'nrg-client',
+    issuer: 'nrg-api',
+  });
 };

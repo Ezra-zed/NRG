@@ -1,22 +1,28 @@
 /**
  * Shared cookie helpers for the auth session.
  *
- * The Google OAuth callback signs the application JWT and stores it in an
- * httpOnly cookie (`nrg_session`). These helpers let both the OAuth controller
- * and the generic authenticate middleware read the session without duplicating
- * parsing logic or adding the cookie-parser dependency.
+ * Access JWTs and opaque refresh tokens use separate HttpOnly cookies.
  */
 
-/** Name of the httpOnly cookie holding the app JWT after OAuth sign-in. */
 export const SESSION_COOKIE = 'nrg_session';
+export const REFRESH_COOKIE = 'nrg_refresh';
 
 /** Parse a raw Cookie header into a plain object. */
-export const parseCookies = (header = '') => Object.fromEntries(
-  header.split(';')
-    .map((part) => part.trim().split('='))
-    .filter(([name, value]) => name && value)
-    .map(([name, ...value]) => [name, decodeURIComponent(value.join('='))]),
-);
+export const parseCookies = (header = '') => {
+  const cookies = {};
+  for (const part of header.split(';')) {
+    const separator = part.indexOf('=');
+    if (separator < 1) continue;
+    const name = part.slice(0, separator).trim();
+    const value = part.slice(separator + 1).trim();
+    try {
+      cookies[name] = decodeURIComponent(value);
+    } catch {
+      cookies[name] = value;
+    }
+  }
+  return cookies;
+};
 
 /**
  * Extract the auth token from a request.
@@ -24,12 +30,9 @@ export const parseCookies = (header = '') => Object.fromEntries(
  * `Authorization: Bearer <token>` (API clients and non-cookie sessions).
  */
 export const extractToken = (req) => {
-  const cookieToken = parseCookies(req.headers.cookie)[SESSION_COOKIE];
-  if (cookieToken) return cookieToken;
-
   const header = req.headers.authorization || '';
-  const [scheme, token] = header.split(' ');
-  if (token && scheme.toLowerCase() === 'bearer') return token;
+  const bearer = header.match(/^\s*Bearer\s+(\S+)\s*$/i)?.[1];
+  if (bearer) return bearer;
 
-  return null;
+  return parseCookies(req.headers.cookie)[SESSION_COOKIE] || null;
 };

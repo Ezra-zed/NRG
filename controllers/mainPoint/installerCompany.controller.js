@@ -11,6 +11,7 @@ import { validateObjectId } from './complaint.controller.js';
  *   get:
  *     tags: [Main Point]
  *     summary: Fetch an installer company's teams (team1 / team2 / team3)
+ *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - in: path
  *         name: id
@@ -43,6 +44,11 @@ export const getInstallerCompany = async (req, res) => {
   const { id } = req.params;
 
   validateObjectId(id, 'companyId');
+
+  const requesterId = String(req.user?._id || req.user?.id || '');
+  if (req.user?.role !== 'admin' && requesterId !== id) {
+    throw new AppError('You are not allowed to view this installer team.', 403, true, 'FORBIDDEN');
+  }
 
   const company = await InstallerCompany.findOne({ companyId: id })
     .populate('companyId', 'id name email phone licenseNumber')

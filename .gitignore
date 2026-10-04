@@ -6,3 +6,4 @@ node_modules/
 uploads/
 .context/
 .img
+.vscode/

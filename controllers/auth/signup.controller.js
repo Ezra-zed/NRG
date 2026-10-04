@@ -1,6 +1,6 @@
 import User from '../../models/User.model.js';
 import AppError from '../../utils/AppError.js';
-import { generateToken } from '../../utils/jwt.js';
+import { createAuthSession } from '../../utils/authSession.js';
 import { sendSuccess } from '../../utils/apiResponse.js';
 import { publicUser } from '../../utils/publicUser.js';
 
@@ -59,6 +59,8 @@ import { publicUser } from '../../utils/publicUser.js';
  *   { role, name, email, phone, password?, businessName?, gstin?, licenseNumber? }
  * @param {import('express').Response} res
  * @returns {Promise<void>} 201 { success, data: { user, token }, message, error }
+ * The access token is short-lived; an HttpOnly refresh cookie is rotated at
+ * POST /api/refresh.
  */
 export const signup = async (req, res) => {
   const {
@@ -94,7 +96,7 @@ export const signup = async (req, res) => {
   });
 
   // Password is excluded by the model's toJSON transform.
-  const token = generateToken({ id: user._id.toString(), role: user.role });
+  const token = await createAuthSession(user, res);
 
   sendSuccess(res, 201, { user: publicUser(user), token }, `Account created as ${role}.`);
 };

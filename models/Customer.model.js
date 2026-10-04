@@ -4,13 +4,13 @@ import mongoose from 'mongoose';
  * Customer — registration data from the "register customer" flow.
  *
  * The mobile number is the primary identifier; email is optional. The
- * electricity bill is an uploaded file whose client-accessible URL is stored
- * in electricityBill.
+ * electricity bill is stored as a private generated filename in electricityBill
+ * and served only through an authorized API route.
  */
 
 const customerSchema = new mongoose.Schema(
   {
-    // The auth User (role 'user') this customer maps to, if auto-created.
+    // Optional authenticated User (role 'user') associated with this inquiry.
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -40,7 +40,7 @@ const customerSchema = new mongoose.Schema(
       enum: ['residential', 'commercial', 'industrial', 'other'],
       default: 'residential',
     },
-    // Uploaded electricity bill — stored as a public /uploads file URL.
+    // Private electricity bill filename; never served by the public static route.
     electricityBill: { type: String, trim: true },
     monthlyBillAmount: { type: Number, min: 0 },
     requiredPower: { type: Number, min: 0 },

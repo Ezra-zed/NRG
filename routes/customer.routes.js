@@ -1,9 +1,15 @@
 import { Router } from 'express';
 import Joi from 'joi';
-import { registerCustomer, listCustomers } from '../controllers/customer.controller.js';
+import {
+  getCustomerElectricityBill,
+  listCustomers,
+  registerCustomer,
+} from '../controllers/customer.controller.js';
 import { validate } from '../middlewares/validate.middleware.js';
-import { upload } from '../utils/upload.js';
+import { privateUpload } from '../utils/upload.js';
 import asyncHandler from '../utils/asyncHandler.js';
+import authenticate, { requireAdmin } from '../middlewares/auth.middleware.js';
+import { rateLimit } from '../middlewares/rateLimit.middleware.js';
 
 /**
  * Customer routes.
@@ -16,7 +22,9 @@ const optStr = (schema) => schema.empty('').optional();
 
 const registerSchema = Joi.object({
   name: optStr(Joi.string().trim().min(2).messages({ 'string.min': 'name must be at least 2 characters' })),
-  mobile: Joi.string().trim().min(7).max(15).required().messages({ 'string.min': 'mobile must be valid' }),
+  mobile: Joi.string().trim().pattern(/^\+?[0-9]{7,15}$/).required().messages({
+    'string.pattern.base': 'mobile must be valid',
+  }),
   email: optStr(Joi.string().trim().lowercase().email({ tlds: { allow: false } }).messages({ 'string.email': 'Invalid email address' })),
   location: optStr(Joi.string().trim().min(2)),
   pincode: optStr(Joi.string().trim().min(4)),
@@ -29,11 +37,19 @@ const registerSchema = Joi.object({
  * POST /api/customers/register — multipart/form-data.
  *   field   electricityBill  (file, optional) + the registerSchema fields above.
  */
-router.post('/register', upload.single('electricityBill'), validate(registerSchema), asyncHandler(registerCustomer));
+router.post(
+  '/register',
+  rateLimit({ max: 10 }),
+  privateUpload.single('electricityBill'),
+  validate(registerSchema),
+  asyncHandler(registerCustomer),
+);
+
+router.get('/:customerId/electricity-bill', authenticate, asyncHandler(getCustomerElectricityBill));
 
 /**
  * GET /api/customers — reference listing (page, limit, q).
  */
-router.get('/', asyncHandler(listCustomers));
+router.get('/', authenticate, requireAdmin, asyncHandler(listCustomers));
 
 export default router;

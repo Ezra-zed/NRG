@@ -5,6 +5,7 @@ import { signupSchema, signinSchema } from '../controllers/auth/auth.schemas.js'
 import { validate } from '../middlewares/validate.middleware.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { rateLimit } from '../middlewares/rateLimit.middleware.js';
+import { refresh, logout } from '../controllers/auth/googleOAuth.controller.js';
 
 /**
  * Auth routes — signup & the multi-method signin endpoint.
@@ -31,5 +32,8 @@ router.post('/signup', rateLimit({ max: 10 }), validate(signupSchema), asyncHand
  * strategy handlers (controllers/auth/strategies/*).
  */
 router.post('/signin', rateLimit({ max: 20 }), validate(signinSchema), asyncHandler(signin));
+
+router.post('/refresh', rateLimit({ max: 30 }), refresh);
+router.post('/logout', logout);
 
 export default router;

@@ -10,29 +10,56 @@ import AppError from './AppError.js';
  * (customer electricity bill, company GST/business registration certificates,
  * completed-project photos, …).
  *
- * Files are stored on disk under <projectRoot>/uploads and exposed to clients
- * at GET /uploads/<filename> (mounted in server.js).
+ * General media is stored under <projectRoot>/uploads and served with safe
+ * content headers. Customer bills use a private subdirectory and an
+ * authorization-checked download route.
  */
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const UPLOAD_DIR = path.resolve(here, '..', 'uploads');
+export const PRIVATE_UPLOAD_DIR = path.join(UPLOAD_DIR, 'private');
 
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+for (const directory of [UPLOAD_DIR, PRIVATE_UPLOAD_DIR]) {
+  if (!fs.existsSync(directory)) fs.mkdirSync(directory, { recursive: true });
 }
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
+const createDiskStorage = (directory) => multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, directory),
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname || '').toLowerCase() || '';
     cb(null, `${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`);
   },
 });
 
+const uploadTypes = new Map([
+  ['.pdf', 'application/pdf'],
+  ['.png', 'image/png'],
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.webp', 'image/webp'],
+]);
+
+export const safeUploadFileFilter = (_req, file, cb) => {
+  const extension = path.extname(file.originalname || '').toLowerCase();
+  if (uploadTypes.get(extension) !== file.mimetype) {
+    cb(new AppError('Only PDF, PNG, JPG, JPEG, and WEBP uploads are allowed.', 400));
+    return;
+  }
+  cb(null, true);
+};
+
 /** Multipart uploader capped at 10 MB per file. */
 export const upload = multer({
-  storage,
+  storage: createDiskStorage(UPLOAD_DIR),
   limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: safeUploadFileFilter,
+});
+
+/** Customer bills are kept outside the publicly mounted upload directory. */
+export const privateUpload = multer({
+  storage: createDiskStorage(PRIVATE_UPLOAD_DIR),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: safeUploadFileFilter,
 });
 
 const currentBillMimeTypes = new Set(['application/pdf', 'image/png', 'image/jpeg']);
@@ -75,3 +102,4 @@ export const currentBillUpload = multer({
  * @returns {string|undefined} e.g. "uploads/171234-o1a2b3c.jpg" or undefined.
  */
 export const publicFileUrl = (filename) => (filename ? `uploads/${filename}` : undefined);
+export const privateFileName = (filename) => filename || undefined;

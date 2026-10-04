@@ -49,6 +49,8 @@ export const cookieOptions = (maxAge) => {
   };
 };
 
+export const refreshCookieOptions = (maxAge) => cookieOptions(maxAge);
+
 /**
  * Cookie options for the OAuth CSRF state cookie.
  *

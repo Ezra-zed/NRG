@@ -2,6 +2,8 @@ import AppError from '../utils/AppError.js';
 import { verifyToken } from '../utils/jwt.js';
 import { extractToken } from '../utils/cookies.js';
 import User from '../models/User.model.js';
+import AuthSession from '../models/AuthSession.model.js';
+import CompanyProfile from '../models/CompanyProfile.model.js';
 
 /**
  * Authentication middleware.
@@ -38,12 +40,27 @@ export default async function authenticate(req, _res, next) {
       throw new AppError('Invalid or expired token.', 401);
     }
 
+    if (decoded.typ !== 'access' || typeof decoded.sid !== 'string' || typeof decoded.id !== 'string') {
+      throw new AppError('Invalid or expired token.', 401);
+    }
+
+    const session = await AuthSession.findOne({
+      _id: decoded.sid,
+      userId: decoded.id,
+      revokedAt: null,
+      expiresAt: { $gt: new Date() },
+    }).select('_id').lean();
+    if (!session) {
+      throw new AppError('Session is no longer active.', 401);
+    }
+
     const user = await User.findById(decoded.id).select('-password').lean();
     if (!user) {
       throw new AppError('User account not found.', 401);
     }
 
     req.user = user;
+    req.authSessionId = decoded.sid;
     next();
   } catch (error) {
     next(error);
@@ -64,4 +81,38 @@ export function requireCompany(req, _res, next) {
     return next(new AppError('Company access required.', 403, true, 'FORBIDDEN'));
   }
   return next();
+}
+
+/** Require a customer account after authenticate has run. */
+export function requireCustomer(req, _res, next) {
+  if (req.user?.role !== 'user') {
+    return next(new AppError('Customer access required.', 403, true, 'FORBIDDEN'));
+  }
+  return next();
+}
+
+/** Require an authenticated and verified marketplace company. */
+export async function requireVerifiedCompany(req, _res, next) {
+  if (!['install-co', 'seller-co'].includes(req.user?.role)) {
+    return next(new AppError('Company access required.', 403, true, 'FORBIDDEN'));
+  }
+
+  try {
+    const profile = await CompanyProfile.findOne({
+      companyId: req.user._id,
+      verified: true,
+    }).select('_id').lean();
+    if (!profile) {
+      return next(new AppError('Company verification is required for this operation.', 403, true, 'COMPANY_NOT_VERIFIED'));
+    }
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+}
+
+/** Allow administrators and verified marketplace companies to access operations data. */
+export async function requireAdminOrCompany(req, res, next) {
+  if (req.user?.role === 'admin') return next();
+  return requireVerifiedCompany(req, res, next);
 }

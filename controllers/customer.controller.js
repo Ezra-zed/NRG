@@ -1,28 +1,29 @@
-import User from '../models/User.model.js';
+import mongoose from 'mongoose';
 import Customer from '../models/Customer.model.js';
-import { generateToken } from '../utils/jwt.js';
-import { publicFileUrl } from '../utils/upload.js';
+import { PRIVATE_UPLOAD_DIR, UPLOAD_DIR, privateFileName } from '../utils/upload.js';
 import { sendSuccess } from '../utils/apiResponse.js';
-import { publicUser } from '../utils/publicUser.js';
+import AppError from '../utils/AppError.js';
 
 /**
  * POST /api/customers/register — register an end customer.
  *
- * The electricity bill is an uploaded file handled by the `upload.single`
+ * The electricity bill is an uploaded file handled by the private uploader
  * middleware in the route (field name: `electricityBill`). All other fields
  * arrive as multipart text values (stored in req.body by multer).
  *
- * A matching auth User is found-or-created on `mobile` so the frontend receives
- * a reusable JWT token for subsequent authenticated calls.
+ * This public intake endpoint stores a customer inquiry only. It does not
+ * authenticate a caller or create/link a login account from an unverified
+ * phone number.
  *
  * @param {import('express').Request} req
  *   req.body —
  *   { name*, mobile*, email?, location?, pincode?, propertyType?, monthlyBillAmount?, requiredSystemSize? }
  *   req.file — uploaded electricity bill (optional).
  * @param {import('express').Response} res
- * @returns {Promise<void>} 201 { success, data: { customer, user, token }, message, error }
+ * @returns {Promise<void>} 201 { success, data: { customer }, message, error }
  */
 export const registerCustomer = async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   const {
     name,
     mobile,
@@ -35,53 +36,38 @@ export const registerCustomer = async (req, res) => {
   } = req.body;
   const file = req.file;
 
-  // Find or create the auth user keyed by mobile (primary identifier).
-  let user = await User.findOne({ phone: mobile });
-  const userCreated = !user;
-  if (!user) {
-    user = await User.create({
-      role: 'user',
-      name: name || mobile,
-      phone: mobile,
-      email: email || undefined,
-      authProvider: 'no-password',
-    });
-  }
-
-  let customer = await Customer.findOne({ mobile });
-  if (!customer) customer = new Customer({ userId: user._id, mobile });
-
-  customer.name = name || customer.name || user.name;
-  customer.email = email || customer.email || undefined;
-  customer.location = location || undefined;
-  customer.pincode = pincode || undefined;
-  if (propertyType) customer.propertyType = propertyType;
+  const customer = new Customer({
+    name: name || mobile,
+    mobile,
+    email: email || undefined,
+    location: location || undefined,
+    pincode: pincode || undefined,
+    propertyType: propertyType || undefined,
+  });
   if (monthlyBillAmount !== undefined && monthlyBillAmount !== '') {
     customer.monthlyBillAmount = Number(monthlyBillAmount);
   }
   if (requiredSystemSize) customer.requiredSystemSize = requiredSystemSize;
-  if (file) customer.electricityBill = publicFileUrl(file.filename);
+  if (file) customer.electricityBill = privateFileName(file.filename);
 
   await customer.save();
 
-  const token = generateToken({ id: user._id.toString(), role: user.role });
-
-  sendSuccess(
-    res,
-    201,
-    { customer: customer.toJSON(), user: publicUser(user), token, userCreated },
-    userCreated ? 'Customer registered & account created.' : 'Customer registered.'
-  );
+  const customerData = customer.toJSON();
+  if (customer.electricityBill) {
+    customerData.electricityBill = `/api/customers/${customer._id}/electricity-bill`;
+  }
+  sendSuccess(res, 201, { customer: customerData }, 'Customer registered.');
 };
 
 /**
- * GET /api/customers — optional lightweight listing for reference/dashboards.
+ * GET /api/customers — paginated customer listing for administrators.
  *
  * @param {import('express').Request} req
  * @param {import('express').Response} res
  * @returns {Promise<void>} 200 { success, data: { items, total }, message, error }
  */
 export const listCustomers = async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   const { page = 1, limit = 10, q } = req.query;
   const currentPage = Math.max(1, parseInt(page, 10) || 1);
   const pageSize = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
@@ -97,5 +83,54 @@ export const listCustomers = async (req, res) => {
     Customer.countDocuments(filter),
   ]);
 
-  sendSuccess(res, 200, { items, total, page: currentPage, limit: pageSize }, 'Customers fetched.');
+  const safeItems = items.map((customer) => ({
+    ...customer,
+    electricityBill: customer.electricityBill
+      ? `/api/customers/${customer._id}/electricity-bill`
+      : undefined,
+  }));
+
+  sendSuccess(res, 200, { items: safeItems, total, page: currentPage, limit: pageSize }, 'Customers fetched.');
+};
+
+export const getCustomerElectricityBill = async (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  const { customerId } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(customerId)) {
+    throw new AppError('Invalid customerId.', 400);
+  }
+
+  const customer = await Customer.findById(customerId).select('userId electricityBill').lean();
+  if (!customer) throw new AppError('Customer not found.', 404);
+
+  const requesterId = String(req.user._id || req.user.id);
+  if (req.user.role !== 'admin' && (
+    req.user.role !== 'user'
+    || !customer.userId
+    || String(customer.userId) !== requesterId
+  )) {
+    throw new AppError('You are not allowed to access this electricity bill.', 403, true, 'FORBIDDEN');
+  }
+  if (!customer.electricityBill) throw new AppError('Electricity bill not found.', 404);
+
+  const privateBill = /^[0-9]+-[a-f0-9]+\.(?:pdf|png|jpe?g|webp)$/.test(customer.electricityBill);
+  const legacyBill = /^uploads\/[0-9]+-[a-f0-9]+\.(?:pdf|png|jpe?g|webp)$/.test(customer.electricityBill);
+  if (!privateBill && !legacyBill) {
+    throw new AppError('Stored electricity bill reference is invalid.', 500, false);
+  }
+
+  const root = privateBill ? PRIVATE_UPLOAD_DIR : UPLOAD_DIR;
+  const fileName = privateBill ? customer.electricityBill : customer.electricityBill.slice('uploads/'.length);
+  return res.sendFile(fileName, {
+    root,
+    headers: {
+      'Content-Disposition': 'attachment',
+      'Content-Security-Policy': "default-src 'none'; sandbox",
+      'Cache-Control': 'private, no-store',
+      'Referrer-Policy': 'no-referrer',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  }, (error) => {
+    if (error) next(error);
+  });
 };

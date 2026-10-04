@@ -10,6 +10,10 @@ import { serveDocsUI, serveDocsSetup } from '../controllers/mainPoint/docs.contr
 import swaggerSpec from '../utils/swagger.js';
 import { validate } from '../middlewares/validate.middleware.js';
 import asyncHandler from '../utils/asyncHandler.js';
+import authenticate, {
+  requireAdminOrCompany,
+  requireCustomer,
+} from '../middlewares/auth.middleware.js';
 
 /**
  * Main Point (core dashboard) routes.
@@ -36,6 +40,8 @@ const listingQuerySchema = Joi.object({
 
 router.get(
   '/complain/listing',
+  authenticate,
+  requireAdminOrCompany,
   validate(listingQuerySchema, 'query'),
   asyncHandler(listComplaints)
 );
@@ -46,11 +52,13 @@ router.get(
 const callLogBodySchema = Joi.object({
   complaintId: objectId.required(),
   notes: Joi.string().trim().min(1).max(2000).required().messages({ 'string.min': 'notes cannot be empty' }),
-  calledBy: Joi.string().trim().min(1).max(100).required().messages({ 'string.min': 'calledBy cannot be empty' }),
+  calledBy: Joi.string().trim().min(1).max(100).optional().messages({ 'string.min': 'calledBy cannot be empty' }),
 });
 
 router.post(
   '/complain/call-log',
+  authenticate,
+  requireAdminOrCompany,
   validate(callLogBodySchema),
   asyncHandler(createCallLog)
 );
@@ -59,12 +67,14 @@ router.post(
  * POST /api/main-point/complain/company/:id — file a complaint against a company.
  */
 const complaintBodySchema = Joi.object({
-  userId: objectId.required(),
+  userId: objectId.optional(),
   message: Joi.string().trim().min(5).max(2000).required().messages({ 'string.min': 'message must be at least 5 characters' }),
 });
 
 router.post(
   '/complain/company/:id',
+  authenticate,
+  requireCustomer,
   validate(complaintBodySchema),
   asyncHandler(createCompanyComplaint)
 );
@@ -72,7 +82,12 @@ router.post(
 /**
  * GET /api/main-point/installer/company/:id — installer team structure.
  */
-router.get('/installer/company/:id', asyncHandler(getInstallerCompany));
+router.get(
+  '/installer/company/:id',
+  authenticate,
+  requireAdminOrCompany,
+  asyncHandler(getInstallerCompany),
+);
 
 /**
  * GET /api/main-point/docs — interactive Swagger UI.

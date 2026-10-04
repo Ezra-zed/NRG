@@ -1,6 +1,6 @@
 import User from '../../../models/User.model.js';
 import AppError from '../../../utils/AppError.js';
-import { generateToken } from '../../../utils/jwt.js';
+import { createAuthSession } from '../../../utils/authSession.js';
 
 /**
  * JWT-auth (email + password) sign-in strategy.
@@ -16,7 +16,7 @@ import { generateToken } from '../../../utils/jwt.js';
  * @returns {Promise<{ user: object, token: string, message: string }>}
  * @throws {AppError} 401 for any credential problem.
  */
-export const handleJwtSignin = async (payload) => {
+export const handleJwtSignin = async (payload, res) => {
   const { email, password } = payload;
 
   // Pull the password hash (hidden by default via select:false) for the check.
@@ -33,7 +33,7 @@ export const handleJwtSignin = async (payload) => {
 
   return {
     user,
-    token: generateToken({ id: user._id.toString(), role: user.role }),
+    token: await createAuthSession(user, res),
     message: 'Signed in successfully with email & password.',
   };
 };

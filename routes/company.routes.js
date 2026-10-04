@@ -8,7 +8,10 @@ import {
   getCompanyMetrics,
 } from '../controllers/company.controller.js';
 import { validate } from '../middlewares/validate.middleware.js';
-import authenticate, { requireCompany } from '../middlewares/auth.middleware.js';
+import authenticate, {
+  requireCompany,
+  requireVerifiedCompany,
+} from '../middlewares/auth.middleware.js';
 import { upload } from '../utils/upload.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { rateLimit } from '../middlewares/rateLimit.middleware.js';
@@ -87,16 +90,16 @@ router.post(
 /**
  * GET /api/companies/leads — the logged-in company's lead list.
  */
-router.get('/leads', authenticate, requireCompany, validate(leadsQuerySchema, 'query'), asyncHandler(getCompanyLeads));
+router.get('/leads', authenticate, requireVerifiedCompany, validate(leadsQuerySchema, 'query'), asyncHandler(getCompanyLeads));
 
 /**
  * PUT /api/companies/leads/:leadId — update pipeline status / submit quote.
  */
-router.put('/leads/:leadId', authenticate, requireCompany, rateLimit({ max: 30 }), validate(updateLeadSchema), asyncHandler(updateLead));
+router.put('/leads/:leadId', authenticate, requireVerifiedCompany, rateLimit({ max: 30 }), validate(updateLeadSchema), asyncHandler(updateLead));
 
 /**
  * GET /api/companies/metrics — sales funnel totals for the logged-in company.
  */
-router.get('/metrics', authenticate, requireCompany, asyncHandler(getCompanyMetrics));
+router.get('/metrics', authenticate, requireVerifiedCompany, asyncHandler(getCompanyMetrics));
 
 export default router;

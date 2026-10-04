@@ -21,20 +21,22 @@ test('oauth state: valid state with matching cookie passes', async () => {
   assert.equal(error, null);
 });
 
-test('oauth state: valid state WITHOUT cookie passes (cookie-blocked browsers)', async () => {
+test('oauth state: valid state without the initiating browser cookie is rejected', async () => {
   const state = createOAuthState();
   const error = await runMiddleware({ headers: {}, query: { state } });
-  assert.equal(error, null);
+  assert.ok(error);
+  assert.equal(error.errorCode, 'INVALID_OAUTH_STATE');
 });
 
-test('oauth state: valid state with a mismatched cookie passes (overwritten by another tab/flow)', async () => {
+test('oauth state: valid state with a different browser cookie is rejected', async () => {
   const state = createOAuthState();
   const other = createOAuthState();
   const error = await runMiddleware({
     headers: { cookie: `${GOOGLE_STATE_COOKIE}=${other}` },
     query: { state },
   });
-  assert.equal(error, null);
+  assert.ok(error);
+  assert.equal(error.errorCode, 'INVALID_OAUTH_STATE');
 });
 
 test('oauth state: forged (tampered) state is rejected', async () => {

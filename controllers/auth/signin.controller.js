@@ -57,6 +57,8 @@ import { publicUser } from '../../utils/publicUser.js';
  *   req.body — validated by Joi: { method, email?, password?, phone?, otp?, oauthProvider?, oauthToken? }
  * @param {import('express').Response} res
  * @returns {Promise<void>} 200 { success, data: { user, token }, message, error }
+ * The access token is short-lived; an HttpOnly refresh cookie is rotated at
+ * POST /api/refresh.
  */
 export const signin = async (req, res) => {
   const { method } = req.body;
@@ -68,7 +70,7 @@ export const signin = async (req, res) => {
   };
 
   const handler = strategies[method];
-  const { user, token, message } = await handler(req.body);
+  const { user, token, message } = await handler(req.body, res);
 
   sendSuccess(res, 200, { user: publicUser(user), token }, message);
 };

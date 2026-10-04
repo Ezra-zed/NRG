@@ -60,11 +60,14 @@ export const listComplaints = async (req, res) => {
   const pageSize = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
 
   const filter = {};
+  if (req.user.role !== 'admin') {
+    filter.companyId = req.user._id;
+  }
   if (status && ['open', 'in-progress', 'resolved', 'closed'].includes(status)) {
     filter.status = status;
   }
 
-  const basicFields = '_id name email phone role';
+  const basicFields = '_id name role';
 
   const [complaints, total] = await Promise.all([
     Complaint.find(filter)
@@ -94,11 +97,11 @@ export const listComplaints = async (req, res) => {
  *         application/json:
  *           schema:
  *             type: object
- *             required: [complaintId, notes, calledBy]
+ *             required: [complaintId, notes]
  *             properties:
  *               complaintId: { type: string, format: ObjectId }
  *               notes: { type: string }
- *               calledBy: { type: string }
+ *               calledBy: { type: string, description: 'Ignored; identity comes from the authenticated account' }
  *     responses:
  *       '201':
  *         description: Created
@@ -108,21 +111,27 @@ export const listComplaints = async (req, res) => {
  *         description: Complaint not found
  *
  * @param {import('express').Request} req
- *   req.body — { complaintId, notes, calledBy } (Joi validated).
+ *   req.body — { complaintId, notes, calledBy? } (caller identity is server-derived).
  * @param {import('express').Response} res
  * @returns {Promise<void>} 201 { success, data: CallLog, message, error }
  */
 export const createCallLog = async (req, res) => {
-  const { complaintId, notes, calledBy } = req.body;
+  const { complaintId, notes } = req.body;
 
   validateObjectId(complaintId, 'complaintId');
 
-  const complaint = await Complaint.findById(complaintId).lean();
+  const complaintFilter = { _id: complaintId };
+  if (req.user.role !== 'admin') complaintFilter.companyId = req.user._id;
+  const complaint = await Complaint.findOne(complaintFilter).lean();
   if (!complaint) {
     throw new AppError(`Complaint '${complaintId}' does not exist.`, 404);
   }
 
-  const callLog = await CallLog.create({ complaintId, notes, calledBy });
+  const callLog = await CallLog.create({
+    complaintId,
+    notes,
+    calledBy: req.user.name || 'Company staff',
+  });
   sendSuccess(res, 201, callLog, 'Call log saved.');
 };
 
@@ -146,9 +155,9 @@ export const createCallLog = async (req, res) => {
  *         application/json:
  *           schema:
  *             type: object
- *             required: [userId, message]
+ *             required: [message]
  *             properties:
- *               userId: { type: string, description: Customer (User) id filing the complaint }
+ *               userId: { type: string, description: 'Optional legacy field; must match the signed-in customer' }
  *               message: { type: string }
  *     responses:
  *       '201':
@@ -165,10 +174,13 @@ export const createCallLog = async (req, res) => {
  */
 export const createCompanyComplaint = async (req, res) => {
   const { id } = req.params;
-  const { userId, message } = req.body;
+  const { userId: requestedUserId, message } = req.body;
 
   validateObjectId(id, 'companyId');
-  validateObjectId(userId, 'userId');
+  const userId = req.user._id;
+  if (requestedUserId && String(requestedUserId) !== String(userId)) {
+    throw new AppError('Complaint userId must match the authenticated customer.', 403, true, 'FORBIDDEN');
+  }
 
   const company = await User.findById(id).lean();
   if (!company || !['seller-co', 'install-co'].includes(company.role)) {

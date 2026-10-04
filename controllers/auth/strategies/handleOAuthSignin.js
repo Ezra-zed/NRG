@@ -1,6 +1,6 @@
 import User from '../../../models/User.model.js';
 import AppError from '../../../utils/AppError.js';
-import { generateToken } from '../../../utils/jwt.js';
+import { createAuthSession } from '../../../utils/authSession.js';
 
 /**
  * Verify a Google access token directly with Google.
@@ -28,7 +28,8 @@ async function verifyOAuthToken(provider, token) {
   }
 
   const profile = await response.json();
-  if (profile.aud !== process.env.OAUTH_CLIENT_ID || !profile.sub || !profile.email) {
+  const emailVerified = profile.email_verified === true || profile.email_verified === 'true';
+  if (profile.aud !== process.env.OAUTH_CLIENT_ID || !profile.sub || !profile.email || !emailVerified) {
     throw new AppError('Google OAuth token audience or profile is invalid.', 401);
   }
 
@@ -53,7 +54,7 @@ async function verifyOAuthToken(provider, token) {
  * @returns {Promise<{ user: object, token: string, message: string }>}
  * @throws {AppError} 401 when the token cannot be verified.
  */
-export const handleOAuthSignin = async (payload) => {
+export const handleOAuthSignin = async (payload, res) => {
   const { oauthProvider: provider, oauthToken: token } = payload;
 
   let profile;
@@ -82,7 +83,7 @@ export const handleOAuthSignin = async (payload) => {
 
   return {
     user,
-    token: generateToken({ id: user._id.toString(), role: user.role }),
+    token: await createAuthSession(user, res),
     message: `Signed in with ${provider}${created ? ' — account created' : ''}`,
   };
 };

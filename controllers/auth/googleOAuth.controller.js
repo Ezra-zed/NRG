@@ -1,9 +1,15 @@
 import User from '../../models/User.model.js';
 import AppError from '../../utils/AppError.js';
-import { generateToken } from '../../utils/jwt.js';
 import { verifyToken } from '../../utils/jwt.js';
 import { publicUser } from '../../utils/publicUser.js';
 import { parseCookies, SESSION_COOKIE } from '../../utils/cookies.js';
+import AuthSession from '../../models/AuthSession.model.js';
+import {
+  clearAuthCookies,
+  createAuthSession,
+  refreshAuthSession,
+  revokeAuthSession,
+} from '../../utils/authSession.js';
 import {
   cookieOptions,
   createOAuthState,
@@ -12,9 +18,8 @@ import {
   oauthStateCookieOptions,
   STATE_MAX_AGE_MS,
 } from '../../utils/oauthState.js';
+import { DEFAULT_PRODUCTION_FRONTEND_URL } from '../../utils/securityConfig.js';
 
-const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-const CURRENT_PRODUCTION_FRONTEND_URL = 'https://enrg-frontend-uyvb.vercel.app';
 const LEGACY_PRODUCTION_FRONTEND_URL = 'https://enrg-front-end-uyv.vercel.app';
 
 const getHomeRedirectUrl = (req) => {
@@ -34,8 +39,8 @@ const getHomeRedirectUrl = (req) => {
   // The former Vercel alias was deleted. Preserve an explicitly configured
   // replacement, but migrate the known dead value during the transition.
   const productionFrontendUrl = configuredProductionFrontendUrl === LEGACY_PRODUCTION_FRONTEND_URL
-    ? CURRENT_PRODUCTION_FRONTEND_URL
-    : configuredProductionFrontendUrl || CURRENT_PRODUCTION_FRONTEND_URL;
+    ? DEFAULT_PRODUCTION_FRONTEND_URL
+    : configuredProductionFrontendUrl || DEFAULT_PRODUCTION_FRONTEND_URL;
 
   if (!productionFrontendUrl) {
     throw new AppError(
@@ -89,15 +94,7 @@ export const validateGoogleCallbackState = (req, res, next) => {
     cookieMatches: Boolean(cookieMatches),
   });
 
-  // CSRF protection comes from the `state` parameter itself: it is HMAC-signed
-  // with the server secret, random per request, and expires after 10 minutes —
-  // an attacker can neither forge nor predict a valid state for a victim's
-  // flow. The cookie is intentionally BEST-EFFORT only and never blocks a
-  // legitimate login:
-  //  - missing cookie       → cross-site cookie blocked (Vercel→Render) → allow.
-  //  - mismatched cookie    → another flow/tab overwrote it → allow.
-  //  - invalid state        → forged/expired → ALWAYS reject.
-  if (!stateValid) {
+  if (!stateValid || !cookieMatches) {
     return next(new AppError('Invalid or expired OAuth state parameter.', 403, true, 'INVALID_OAUTH_STATE'));
   }
 
@@ -105,11 +102,16 @@ export const validateGoogleCallbackState = (req, res, next) => {
 };
 
 export const finishGoogleLogin = async (profile, req, res) => {
-  const email = profile.emails?.[0]?.value?.toLowerCase();
-  if (!profile.id || !email) {
+  const emailProfile = profile.emails?.[0];
+  const email = emailProfile?.value?.toLowerCase();
+  const emailVerified = emailProfile?.verified === true
+    || profile._json?.email_verified === true
+    || profile._json?.email_verified === 'true';
+  if (!profile.id || !email || !emailVerified) {
     logOAuth('PROFILE_INVALID', {
       hasGoogleId: Boolean(profile.id),
       hasEmail: Boolean(email),
+      emailVerified,
     });
     throw new AppError('Google did not return a usable profile.', 401);
   }
@@ -135,8 +137,7 @@ export const finishGoogleLogin = async (profile, req, res) => {
   // Resolve this before setting the session cookie so a configuration error
   // cannot leave the browser signed in without a valid redirect destination.
   const homeUrl = getHomeRedirectUrl(req);
-  const token = generateToken({ id: user._id.toString(), role: user.role });
-  res.cookie(SESSION_COOKIE, token, cookieOptions(SESSION_MAX_AGE_MS));
+  const token = await createAuthSession(user, res);
   logOAuth('LOGIN_SUCCESS', {
     userId: user._id.toString(),
     created,
@@ -161,10 +162,12 @@ export const finishGoogleLogin = async (profile, req, res) => {
  *
  * Lets the frontend restore the session on load: with `credentials: 'include'`
  * the browser sends the nrg_session cookie and this returns the signed-in user,
- * so the user "stays signed in" across reloads until the cookie expires (7d).
+ * so the user stays signed in across reloads. The frontend can rotate an
+ * expired access cookie through POST /api/refresh.
  */
 export const getCurrentUser = async (req, res, next) => {
   try {
+    res.set('Cache-Control', 'no-store');
     const cookies = parseCookies(req.headers.cookie);
     const token = cookies[SESSION_COOKIE];
     if (!token) {
@@ -179,15 +182,31 @@ export const getCurrentUser = async (req, res, next) => {
       return res.json({ success: true, data: { user: null }, message: 'Session expired.', error: null });
     }
 
+    if (decoded.typ !== 'access' || typeof decoded.sid !== 'string' || typeof decoded.id !== 'string') {
+      res.clearCookie(SESSION_COOKIE, cookieOptions());
+      return res.json({ success: true, data: { user: null }, message: 'Session expired.', error: null });
+    }
+
+    const session = await AuthSession.findOne({
+      _id: decoded.sid,
+      userId: decoded.id,
+      revokedAt: null,
+      expiresAt: { $gt: new Date() },
+    }).select('_id').lean();
+    if (!session) {
+      clearAuthCookies(res);
+      return res.json({ success: true, data: { user: null }, message: 'Session expired.', error: null });
+    }
+
     const user = await User.findById(decoded.id).select('-password');
     if (!user) {
-      res.clearCookie(SESSION_COOKIE, cookieOptions());
+      clearAuthCookies(res);
       return res.json({ success: true, data: { user: null }, message: 'Session expired.', error: null });
     }
 
     return res.json({
       success: true,
-      data: { user: publicUser(user), token },
+      data: { user: publicUser(user) },
       message: 'Signed in.',
       error: null,
     });
@@ -196,8 +215,28 @@ export const getCurrentUser = async (req, res, next) => {
   }
 };
 
-export const logout = (_req, res) => {
-  res.clearCookie(SESSION_COOKIE, cookieOptions());
+export const refresh = async (req, res, next) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const token = await refreshAuthSession(req, res);
+    return res.json({
+      success: true,
+      data: { token },
+      message: 'Session refreshed.',
+      error: null,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const logout = async (req, res, next) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    await revokeAuthSession(req, res);
+  } catch (error) {
+    return next(error);
+  }
   return res.json({ success: true, data: null, message: 'Logged out.', error: null });
 };
 

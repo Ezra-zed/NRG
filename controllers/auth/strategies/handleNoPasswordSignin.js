@@ -1,6 +1,6 @@
 import User from '../../../models/User.model.js';
 import AppError from '../../../utils/AppError.js';
-import { generateToken } from '../../../utils/jwt.js';
+import { createAuthSession } from '../../../utils/authSession.js';
 
 /**
  * Passwordless (OTP) sign-in strategy.
@@ -18,23 +18,22 @@ import { generateToken } from '../../../utils/jwt.js';
  * @returns {Promise<{ user: object, token: string, message: string }>}
  * @throws {AppError} 500 when the OTP verification service is unconfigured in production.
  */
-export const handleNoPasswordSignin = async (payload) => {
-  const { email, phone, otp } = payload;
+export const handleNoPasswordSignin = async (payload, res) => {
+  const { email, phone } = payload;
 
   /**
    * STUB — swap for your OTP provider SDK (Twilio, MSG91, Firebase, …).
    * Assumes the OTP was already delivered & independently verified.
    */
-  const verifyOtp = async (identifier, code) => {
-    if (process.env.NODE_ENV === 'production') {
+  const verifyOtp = async () => {
+    if (process.env.NODE_ENV !== 'development' || process.env.ENABLE_DEV_OTP_STUB !== 'true') {
       throw new AppError('OTP verification service is not configured.', 500);
     }
-    console.log(`[OTP-STUB] Verifying code ${code} for ${identifier} … accepted (dev mode).`);
+    console.warn('[OTP-STUB] Development-only OTP accepted.');
     return true;
   };
 
-  const identifier = email || phone;
-  await verifyOtp(identifier, otp);
+  await verifyOtp();
 
   // Find by whichever identifier was provided.
   const query = email ? { email } : { phone };
@@ -56,7 +55,7 @@ export const handleNoPasswordSignin = async (payload) => {
 
   return {
     user,
-    token: generateToken({ id: user._id.toString(), role: user.role }),
+    token: await createAuthSession(user, res),
     message: `Signed in successfully with OTP${created ? ' — account created' : ''}.`,
   };
 };
