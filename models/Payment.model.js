@@ -24,11 +24,19 @@ const paymentSchema = new mongoose.Schema({
 paymentSchema.index({ userId: 1, idempotencyKey: 1 }, { unique: true });
 paymentSchema.index({ razorpayOrderId: 1 }, { unique: true, sparse: true });
 paymentSchema.index({ razorpayPaymentId: 1 }, { unique: true, sparse: true });
+// Keep the existing paid constraint unchanged. Add the active predicate field
+// to the other key pattern; it is constant (true) for every indexed record, so
+// uniqueness still applies to the project/quote pair. The distinct patterns
+// avoid Mongoose's duplicate schema index warning and preserve the deployed
+// paid index without requiring an index rebuild.
 paymentSchema.index({ projectId: 1, quoteId: 1 }, {
-  unique: true, partialFilterExpression: { status: 'paid' },
+  unique: true,
+  partialFilterExpression: { status: 'paid' },
 });
-paymentSchema.index({ projectId: 1, quoteId: 1 }, {
-  unique: true, partialFilterExpression: { active: true },
+paymentSchema.index({ projectId: 1, quoteId: 1, active: 1 }, {
+  name: 'active_project_quote_unique',
+  unique: true,
+  partialFilterExpression: { active: true },
 });
 paymentSchema.index({ status: 1, updatedAt: -1 });
 
