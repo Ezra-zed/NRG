@@ -35,6 +35,7 @@ COPY --chown=node:node controllers ./controllers
 COPY --chown=node:node middlewares ./middlewares
 COPY --chown=node:node models ./models
 COPY --chown=node:node routes ./routes
+COPY --chown=node:node schemas ./schemas
 COPY --chown=node:node services ./services
 COPY --chown=node:node utils ./utils
 
