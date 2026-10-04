@@ -16,6 +16,7 @@ import adminRoutes from './routes/admin.routes.js';
 import companyAssistantRoutes from './routes/companyAssistant.routes.js';
 import estimatorRoutes from './routes/estimator.routes.js';
 import healthRoutes from './routes/health.routes.js';
+import paymentRoutes from './routes/payment.routes.js';
 import errorHandler from './middlewares/errorHandler.js';
 import notFoundHandler from './middlewares/notFoundHandler.js';
 import { UPLOAD_DIR } from './utils/upload.js';
@@ -45,6 +46,8 @@ app.use(cors({
   credentials: true,
 }));
 app.use(protectCookieAuthenticatedWrites);
+// Razorpay signs the exact raw webhook bytes; mount before JSON parsing.
+app.use('/api/payments/webhook', express.raw({ type: 'application/json', limit: '1mb' }));
 app.use(express.json());         // JSON bodies
 app.use(express.urlencoded({ extended: true })); // form bodies
 app.use(passport.initialize());  // Passport is used by the Google code flow
@@ -89,6 +92,7 @@ app.use('/api/customers', customerRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/companies', companyRoutes);
 app.use('/api/estimator', estimatorRoutes);
+app.use('/api/payments', paymentRoutes);
 app.use('/api/company', companyAssistantRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/main-point', mainPointRoutes);

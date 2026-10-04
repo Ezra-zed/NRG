@@ -2,6 +2,7 @@ import User from '../models/User.model.js';
 import Lead from '../models/Lead.model.js';
 import Project from '../models/Project.model.js';
 import Complaint from '../models/Complaint.model.js';
+import Payment from '../models/Payment.model.js';
 import CompanyProfile from '../models/CompanyProfile.model.js';
 import AppError from '../utils/AppError.js';
 import { sendSuccess } from '../utils/apiResponse.js';
@@ -169,7 +170,7 @@ export const getAdminCompanyDetail = async (req, res) => {
  * @returns {Promise<void>} 200 { success, data: { companies, complaints, payments }, message, error }
  */
 export const getAdminManagement = async (req, res) => {
-  const [companyUsers, companyProfiles, complaints] = await Promise.all([
+  const [companyUsers, companyProfiles, complaints, payments] = await Promise.all([
     User.find({ role: { $in: ['seller-co', 'install-co'] } })
       .select('_id name businessName email role phone createdAt')
       .sort({ createdAt: -1 })
@@ -180,6 +181,10 @@ export const getAdminManagement = async (req, res) => {
       .populate('companyId', 'name email')
       .sort({ createdAt: -1 })
       .limit(50)
+      .lean(),
+    Payment.find().sort({ createdAt: -1 }).limit(100)
+      .populate('userId', 'name email phone')
+      .populate('projectId', 'location trackingStatus')
       .lean(),
   ]);
 
@@ -214,7 +219,7 @@ export const getAdminManagement = async (req, res) => {
     {
       companies: companyPerformance,
       complaints,
-      payments: [], // No payment ledger exists in this backend yet — reserved shape.
+      payments,
     },
     'Management data fetched.'
   );
