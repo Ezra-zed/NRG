@@ -84,7 +84,8 @@ export const getAdminDashboard = async (req, res) => {
  */
 export const verifyCompany = async (req, res) => {
   const { companyId } = req.params;
-  const { verificationBadges = [] } = req.body || {};
+  const { verificationBadges = [], status } = req.body || {};
+  const effectiveStatus = status || (verificationBadges.length ? 'verified' : 'pending');
 
   assertObjectId(companyId, 'companyId');
 
@@ -93,13 +94,70 @@ export const verifyCompany = async (req, res) => {
     throw new AppError(`Company '${companyId}' does not exist.`, 404);
   }
 
+  const badges = effectiveStatus === 'verified'
+    ? (verificationBadges.length ? verificationBadges : ['Business Verified'])
+    : [];
+  const verificationUpdate = {
+    $set: {
+      verificationBadges: badges,
+      verified: effectiveStatus === 'verified',
+      verificationStatus: effectiveStatus,
+    },
+    $setOnInsert: { companyId },
+  };
+  if (effectiveStatus === 'rejected') {
+    verificationUpdate.$set.verificationRejectionReason = req.body.rejectionReason;
+  } else {
+    verificationUpdate.$unset = { verificationRejectionReason: 1 };
+  }
   const profile = await CompanyProfile.findOneAndUpdate(
     { companyId },
-    { $set: { verificationBadges, verified: verificationBadges.length > 0 }, $setOnInsert: { companyId } },
+    verificationUpdate,
     { new: true, upsert: true, setDefaultsOnInsert: true }
   );
 
   sendSuccess(res, 200, profile, 'Company verification updated.');
+};
+
+/** GET /api/admin/companies/:companyId — review company profile and documents. */
+export const getAdminCompanyDetail = async (req, res) => {
+  const { companyId } = req.params;
+  assertObjectId(companyId, 'companyId');
+  const [user, profile] = await Promise.all([
+    User.findOne({ _id: companyId, role: { $in: ['seller-co', 'install-co'] } })
+      .select('_id name businessName email phone role gstin licenseNumber createdAt')
+      .lean(),
+    CompanyProfile.findOne({ companyId }).lean(),
+  ]);
+  if (!user) throw new AppError(`Company '${companyId}' does not exist.`, 404);
+  const verified = Boolean(profile?.verified);
+  sendSuccess(res, 200, {
+    id: user._id.toString(),
+    name: user.businessName || user.name,
+    email: user.email || null,
+    phone: user.phone || null,
+    role: user.role,
+    gstin: user.gstin || null,
+    licenseNumber: user.licenseNumber || null,
+    createdAt: user.createdAt,
+    profile: profile ? {
+      logo: profile.logo || null,
+      gstCertificate: profile.gstCertificate || null,
+      businessRegistration: profile.businessRegistration || null,
+      installExperienceYears: profile.installExperienceYears || 0,
+      serviceLocations: profile.serviceLocations || [],
+      products: profile.products || [],
+      brands: profile.brands || [],
+      pricingPackages: profile.pricingPackages || [],
+      completedProjectPhotos: profile.completedProjectPhotos || [],
+      rating: profile.rating || 0,
+      ratingCount: profile.ratingCount || 0,
+    } : null,
+    verified,
+    verificationStatus: profile?.verificationStatus || (verified ? 'verified' : 'pending'),
+    verificationRejectionReason: profile?.verificationRejectionReason || null,
+    verificationBadges: profile?.verificationBadges || [],
+  }, 'Company verification details fetched.');
 };
 
 /**
@@ -111,11 +169,12 @@ export const verifyCompany = async (req, res) => {
  * @returns {Promise<void>} 200 { success, data: { companies, complaints, payments }, message, error }
  */
 export const getAdminManagement = async (req, res) => {
-  const [companies, complaints] = await Promise.all([
-    CompanyProfile.find()
-      .populate('companyId', 'name email role phone')
+  const [companyUsers, companyProfiles, complaints] = await Promise.all([
+    User.find({ role: { $in: ['seller-co', 'install-co'] } })
+      .select('_id name businessName email role phone createdAt')
       .sort({ createdAt: -1 })
       .lean(),
+    CompanyProfile.find().lean(),
     Complaint.find()
       .populate('userId', 'name email phone')
       .populate('companyId', 'name email')
@@ -124,25 +183,30 @@ export const getAdminManagement = async (req, res) => {
       .lean(),
   ]);
 
-  const companyPerformance = companies.map((p) => ({
-    id: p._id.toString(),
-    company: p.companyId
-      ? {
-          id: p.companyId._id?.toString(),
-          name: p.companyId.name,
-          email: p.companyId.email,
-          role: p.companyId.role,
-          phone: p.companyId.phone,
-        }
-      : null,
-    rating: p.rating,
-    ratingCount: p.ratingCount,
-    verificationBadges: p.verificationBadges,
-    verified: p.verified,
-    installExperienceYears: p.installExperienceYears,
-    serviceLocations: p.serviceLocations,
-    updatedAt: p.updatedAt,
-  }));
+  const profilesByCompany = new Map(companyProfiles.map((profile) => [String(profile.companyId), profile]));
+  const companyPerformance = companyUsers.map((user) => {
+    const profile = profilesByCompany.get(String(user._id));
+    const verified = Boolean(profile?.verified);
+    return {
+      id: profile?._id?.toString() || user._id.toString(),
+      company: {
+        id: user._id.toString(),
+        name: user.businessName || user.name,
+        email: user.email,
+        role: user.role,
+        phone: user.phone,
+      },
+      rating: profile?.rating || 0,
+      ratingCount: profile?.ratingCount || 0,
+      verificationBadges: profile?.verificationBadges || [],
+      verificationStatus: profile?.verificationStatus || (verified ? 'verified' : 'pending'),
+      verificationRejectionReason: profile?.verificationRejectionReason || null,
+      verified,
+      installExperienceYears: profile?.installExperienceYears || 0,
+      serviceLocations: profile?.serviceLocations || [],
+      updatedAt: profile?.updatedAt || user.createdAt,
+    };
+  });
 
   sendSuccess(
     res,

@@ -42,6 +42,7 @@ export const upsertCompanyProfile = async (req, res) => {
     } catch {}
   }
 
+  if (files.logo?.[0]) profile.logo = publicFileUrl(files.logo[0].filename);
   if (files.gstCertificate?.[0]) profile.gstCertificate = publicFileUrl(files.gstCertificate[0].filename);
   if (files.businessRegistration?.[0]) profile.businessRegistration = publicFileUrl(files.businessRegistration[0].filename);
   if (files.completedProjectPhotos?.length) {
@@ -49,9 +50,31 @@ export const upsertCompanyProfile = async (req, res) => {
   }
 
   profile.verified = (profile.verificationBadges || []).length > 0;
+  if (profile.verified) {
+    profile.verificationStatus = 'verified';
+    profile.verificationRejectionReason = undefined;
+  } else {
+    profile.verificationStatus = 'pending';
+    profile.verificationRejectionReason = undefined;
+  }
   await profile.save();
 
   sendSuccess(res, 200, profile, 'Company profile saved.');
+};
+
+/** Return the signed-in company's current verification decision. */
+export const getCompanyVerificationStatus = async (req, res) => {
+  const companyId = req.user._id || req.user.id;
+  const profile = await CompanyProfile.findOne({ companyId })
+    .select('verified verificationStatus verificationRejectionReason verificationBadges')
+    .lean();
+  const verified = Boolean(profile?.verified);
+  sendSuccess(res, 200, {
+    verified,
+    status: profile?.verificationStatus || (verified ? 'verified' : 'pending'),
+    rejectionReason: profile?.verificationRejectionReason || null,
+    verificationBadges: profile?.verificationBadges || [],
+  }, 'Company verification status fetched.');
 };
 
 export const getPublicCompaniesWithDependencies = async (
@@ -61,13 +84,16 @@ export const getPublicCompaniesWithDependencies = async (
 ) => {
   const currentPage = Math.max(1, parseInt(req.query.page, 10) || 1);
   const pageSize = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
-  const { role, search } = req.query;
-  const { location } = req.query;
+  const { role, search, verified, minRating } = req.query;
+  const selectedRole = role || req.query.type;
   const normalizedSearch = typeof search === 'string' ? search.trim().toLowerCase() : '';
 
-  const userFilter = { role: { $in: role ? [role] : ['install-co', 'seller-co'] } };
+  const userFilter = { role: { $in: selectedRole ? [selectedRole] : ['install-co', 'seller-co'] } };
   const users = await userModel.find(userFilter).select('_id name businessName email role').lean();
-  const profiles = await profileModel.find({ companyId: { $in: users.map((user) => user._id) } }).lean();
+  const profileFilter = { companyId: { $in: users.map((user) => user._id) } };
+  if (verified !== undefined) profileFilter.verified = verified;
+  if (minRating !== undefined) profileFilter.rating = { $gte: minRating };
+  const profiles = await profileModel.find(profileFilter).lean();
   const profilesByCompanyId = new Map(profiles.map((profile) => [profile.companyId.toString(), profile]));
 
   const companies = users
@@ -77,7 +103,7 @@ export const getPublicCompaniesWithDependencies = async (
 
       const name = user.businessName || user.name;
       const locations = profile.serviceLocations || [];
-      const location = locations[0];
+      const primaryLocation = locations[0];
       const normalizedLocation = typeof req.query.location === 'string' ? req.query.location.trim().toLowerCase() : '';
       if (normalizedLocation && !locations.some((value) => String(value || '').toLowerCase().includes(normalizedLocation))) {
         return null;
@@ -89,9 +115,12 @@ export const getPublicCompaniesWithDependencies = async (
       return {
         id: user._id.toString(),
         name,
-        ...(location ? { location } : {}),
-        projectsCompleted: 0,
+        type: user.role,
+        ...(primaryLocation ? { location: primaryLocation } : {}),
+        locations,
+        logo: profile.logo || null,
         verificationBadges: profile.verificationBadges || [],
+        verified: Boolean(profile.verified),
         ...(user.email ? { email: user.email } : {}),
         role: user.role,
         rating: profile.rating ?? 0,
@@ -118,6 +147,36 @@ export const getPublicCompaniesWithDependencies = async (
 };
 
 export const getPublicCompanies = (req, res) => getPublicCompaniesWithDependencies(req, res);
+
+export const getPublicCompanyDetail = async (req, res) => {
+  assertObjectId(req.params.companyId, 'companyId');
+  const [user, profile] = await Promise.all([
+    User.findOne({
+      _id: req.params.companyId,
+      role: { $in: ['install-co', 'seller-co'] },
+    }).select('_id name businessName email role').lean(),
+    CompanyProfile.findOne({ companyId: req.params.companyId }).lean(),
+  ]);
+  if (!user || !profile) throw new AppError('Company not found.', 404);
+
+  sendSuccess(res, 200, {
+    id: user._id.toString(),
+    name: user.businessName || user.name,
+    type: user.role,
+    email: user.email || null,
+    logo: profile.logo || null,
+    verified: Boolean(profile.verified),
+    verificationBadges: profile.verificationBadges || [],
+    locations: profile.serviceLocations || [],
+    rating: profile.rating ?? 0,
+    ratingCount: profile.ratingCount ?? 0,
+    installExperienceYears: profile.installExperienceYears ?? 0,
+    products: profile.products || [],
+    brands: profile.brands || [],
+    pricingPackages: profile.pricingPackages || [],
+    completedProjectPhotos: profile.completedProjectPhotos || [],
+  }, 'Company details fetched.');
+};
 
 export const getCompanyLeads = async (req, res) => {
   const { page = 1, limit = 10, status } = req.query;
@@ -185,15 +244,28 @@ export const getCompanyLeads = async (req, res) => {
   );
 };
 
-export const updateLead = async (req, res) => {
+export const updateLeadWithDependencies = async (
+  req,
+  res,
+  { leadModel = Lead, syncQuote = syncQuoteToProject } = {},
+) => {
   const { leadId } = req.params;
   const { status, quote } = req.body;
   assertObjectId(leadId, 'leadId');
+  if (status === 'won') {
+    throw new AppError('Only customer quote approval can mark a lead as won.', 403, true, 'FORBIDDEN');
+  }
+  if (status === 'quote-submitted' && !quote) {
+    throw new AppError('A quotation is required to submit this lead.', 400, true, 'QUOTE_REQUIRED');
+  }
 
   const companyId = req.user._id || req.user.id;
-  const lead = await Lead.findOne({ _id: leadId, companyId });
+  const lead = await leadModel.findOne({ _id: leadId, companyId });
   if (!lead) {
     throw new AppError(`Lead '${leadId}' not found for this company.`, 404);
+  }
+  if (lead.status === 'won' || lead.status === 'lost' || lead.status === 'rejected') {
+    throw new AppError('Closed leads cannot be changed.', 409, true, 'LEAD_CLOSED');
   }
 
   if (status !== undefined) lead.status = status;
@@ -205,43 +277,51 @@ export const updateLead = async (req, res) => {
       notes: quote.notes || '',
       submittedAt: new Date(),
     };
-    if (!status || status === 'new') lead.status = 'quote-submitted';
-    await syncQuoteToProject(lead, quote);
+    lead.status = 'quote-submitted';
+    await syncQuote(lead, quote);
   }
 
   await lead.save();
   sendSuccess(res, 200, lead, 'Lead updated.');
 };
 
+export const updateLead = (req, res) => updateLeadWithDependencies(req, res);
+
 const syncQuoteToProject = async (lead, quote) => {
   const project = await Project.findById(lead.projectId);
-  if (!project) return;
+  if (!project) throw new AppError('Project associated with this lead was not found.', 404);
 
   const companyId = lead.companyId;
   const [companyUser, profile] = await Promise.all([
-    User.findById(companyId).select('name').lean(),
+    User.findById(companyId).select('name businessName').lean(),
     CompanyProfile.findOne({ companyId }).lean(),
   ]);
 
-  const alreadyQuoted = (project.quotes || []).some(
-    (q) => q.companyId && q.companyId.toString() === companyId.toString()
+  const quoteSnapshot = {
+    companyId,
+    companyName: companyUser?.businessName || companyUser?.name || 'Company',
+    rating: profile?.rating || 0,
+    yearsExperience: profile?.installExperienceYears || 0,
+    verified: Boolean(profile?.verified),
+    estimatedPrice: Number(quote.estimatedPrice),
+    warrantyYears: quote.warrantyYears !== undefined ? Number(quote.warrantyYears) : 0,
+    notes: quote.notes || '',
+    leadId: lead._id,
+    status: 'submitted',
+  };
+  const existingQuote = (project.quotes || []).find(
+    (item) => item.companyId && item.companyId.toString() === companyId.toString()
   );
-  if (!alreadyQuoted) {
-    project.quotes.push({
-      companyId,
-      companyName: companyUser?.name || 'Company',
-      rating: profile?.rating || 0,
-      yearsExperience: profile?.installExperienceYears || 0,
-      verified: Boolean(profile?.verified),
-      estimatedPrice: Number(quote.estimatedPrice),
-      warrantyYears: quote.warrantyYears !== undefined ? Number(quote.warrantyYears) : 0,
-      notes: quote.notes || '',
-      leadId: lead._id,
-      status: 'submitted',
-    });
-    if (project.status === 'pending') project.status = 'quoted';
-    await project.save();
+  if (existingQuote) {
+    if (existingQuote.status !== 'submitted') {
+      throw new AppError('An approved or closed quotation cannot be changed.', 409, true, 'QUOTE_CLOSED');
+    }
+    Object.assign(existingQuote, quoteSnapshot);
+  } else {
+    project.quotes.push(quoteSnapshot);
   }
+  if (project.status === 'pending') project.status = 'quoted';
+  await project.save();
 };
 
 export const getCompanyMetrics = async (req, res) => {

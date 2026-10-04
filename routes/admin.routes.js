@@ -2,6 +2,7 @@ import { Router } from 'express';
 import Joi from 'joi';
 import {
   getAdminDashboard,
+  getAdminCompanyDetail,
   verifyCompany,
   getAdminManagement,
   getAdminLeads,
@@ -20,8 +21,14 @@ const router = Router();
 const verificationBadges = ['GST Verified', 'Business Verified', 'Installer Verified', 'Top Rated'];
 
 const verifySchema = Joi.object({
+  status: Joi.string().valid('pending', 'verified', 'rejected').optional(),
   verificationBadges: Joi.array().items(Joi.string().valid(...verificationBadges)).default([]),
-});
+  rejectionReason: Joi.string().trim().min(3).max(1000).when('status', {
+    is: 'rejected',
+    then: Joi.required(),
+    otherwise: Joi.optional(),
+  }),
+}).with('status', 'verificationBadges');
 
 const adminLeadsQuerySchema = Joi.object({
   page: Joi.number().integer().positive().optional(),
@@ -38,6 +45,8 @@ const adminLeadsQuerySchema = Joi.object({
  * GET /api/admin/dashboard — marketplace metrics.
  */
 router.get('/dashboard', authenticate, requireAdmin, asyncHandler(getAdminDashboard));
+
+router.get('/companies/:companyId', authenticate, requireAdmin, asyncHandler(getAdminCompanyDetail));
 
 /**
  * PUT /api/admin/companies/:companyId/verify — apply verification badges.

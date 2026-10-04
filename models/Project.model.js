@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { PROJECT_LIFECYCLE_STATUSES } from '../config/projectLifecycle.js';
 
 /**
  * Project — a "Get Solar Quote" request plus the quotes companies have
@@ -29,6 +30,18 @@ const quoteSchema = new mongoose.Schema(
   { _id: true }
 );
 
+const projectTrackingEventSchema = new mongoose.Schema(
+  {
+    status: { type: String, enum: PROJECT_LIFECYCLE_STATUSES, required: true },
+    message: { type: String, trim: true, maxlength: 1000 },
+    important: { type: Boolean, default: false },
+    actorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    actorRole: { type: String, enum: ['user', 'seller-co', 'install-co', 'admin', 'system'], required: true },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: true }
+);
+
 const projectSchema = new mongoose.Schema(
   {
     customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', index: true },
@@ -51,6 +64,15 @@ const projectSchema = new mongoose.Schema(
     currentBillOriginalName: { type: String, trim: true },
     currentBillMimeType: { type: String, trim: true },
     currentBillUploadedAt: { type: Date },
+    estimate: { type: mongoose.Schema.Types.Mixed, default: null },
+    trackingStatus: {
+      type: String,
+      enum: PROJECT_LIFECYCLE_STATUSES,
+      default: 'project-created',
+      index: true,
+    },
+    expectedCompletionAt: { type: Date, default: null },
+    trackingHistory: { type: [projectTrackingEventSchema], default: [] },
     status: {
       type: String,
       enum: ['pending', 'quoted', 'in-progress', 'completed', 'cancelled'],

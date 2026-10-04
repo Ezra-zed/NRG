@@ -26,6 +26,7 @@ const companyProfileSchema = new mongoose.Schema(
       unique: true,
       index: true,
     },
+    logo: { type: String, trim: true },
     // Uploaded certificates — public /uploads file URLs.
     gstCertificate: { type: String, trim: true },
     businessRegistration: { type: String, trim: true },
@@ -44,6 +45,13 @@ const companyProfileSchema = new mongoose.Schema(
       enum: ['GST Verified', 'Business Verified', 'Installer Verified', 'Top Rated'],
       default: [],
     },
+    verificationStatus: {
+      type: String,
+      enum: ['pending', 'verified', 'rejected'],
+      default: 'pending',
+      index: true,
+    },
+    verificationRejectionReason: { type: String, trim: true, maxlength: 1000 },
     // Derived aggregate state (see controllers).
     verified: { type: Boolean, default: false },
     rating: { type: Number, min: 0, max: 5, default: 0 },
@@ -62,6 +70,9 @@ const companyProfileSchema = new mongoose.Schema(
     },
   }
 );
+
+companyProfileSchema.index({ verified: 1, rating: -1 });
+companyProfileSchema.index({ serviceLocations: 1 });
 
 const CompanyProfile = mongoose.model('CompanyProfile', companyProfileSchema);
 

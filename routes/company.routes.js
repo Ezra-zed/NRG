@@ -2,7 +2,9 @@ import { Router } from 'express';
 import Joi from 'joi';
 import {
   upsertCompanyProfile,
+  getCompanyVerificationStatus,
   getPublicCompanies,
+  getPublicCompanyDetail,
   getCompanyLeads,
   updateLead,
   getCompanyMetrics,
@@ -12,7 +14,7 @@ import authenticate, {
   requireCompany,
   requireVerifiedCompany,
 } from '../middlewares/auth.middleware.js';
-import { upload } from '../utils/upload.js';
+import { companyProfileUpload } from '../utils/upload.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { rateLimit } from '../middlewares/rateLimit.middleware.js';
 
@@ -29,6 +31,9 @@ const publicCompaniesQuerySchema = Joi.object({
   role: Joi.string().valid('install-co', 'seller-co').optional(),
   search: Joi.string().trim().max(100).optional(),
   location: Joi.string().trim().max(100).optional(),
+  type: Joi.string().valid('install-co', 'seller-co').optional(),
+  verified: Joi.boolean().optional(),
+  minRating: Joi.number().min(0).max(5).optional(),
 });
 
 router.get('/', validate(publicCompaniesQuerySchema, 'query'), asyncHandler(getPublicCompanies));
@@ -57,13 +62,14 @@ const updateLeadSchema = Joi.object({
 /**
  * POST /api/companies/profile — multipart/form-data.
  *   fields:  installExperienceYears, serviceLocations, products, brands, pricingPackages (JSON)
- *   files:   gstCertificate, businessRegistration, completedProjectPhotos (array)
+ *   files:   logo, gstCertificate, businessRegistration, completedProjectPhotos (array)
  */
 router.post(
   '/profile',
   authenticate,
   requireCompany,
-  upload.fields([
+  companyProfileUpload.fields([
+    { name: 'logo', maxCount: 1 },
     { name: 'gstCertificate', maxCount: 1 },
     { name: 'businessRegistration', maxCount: 1 },
     { name: 'completedProjectPhotos', maxCount: 10 },
@@ -79,13 +85,16 @@ router.post(
   '/profile/setup',
   authenticate,
   requireCompany,
-  upload.fields([
+  companyProfileUpload.fields([
+    { name: 'logo', maxCount: 1 },
     { name: 'gstCertificate', maxCount: 1 },
     { name: 'businessRegistration', maxCount: 1 },
     { name: 'completedProjectPhotos', maxCount: 10 },
   ]),
   asyncHandler(upsertCompanyProfile)
 );
+
+router.get('/profile/status', authenticate, requireCompany, asyncHandler(getCompanyVerificationStatus));
 
 /**
  * GET /api/companies/leads — the logged-in company's lead list.
@@ -101,5 +110,7 @@ router.put('/leads/:leadId', authenticate, requireVerifiedCompany, rateLimit({ m
  * GET /api/companies/metrics — sales funnel totals for the logged-in company.
  */
 router.get('/metrics', authenticate, requireVerifiedCompany, asyncHandler(getCompanyMetrics));
+
+router.get('/:companyId', asyncHandler(getPublicCompanyDetail));
 
 export default router;

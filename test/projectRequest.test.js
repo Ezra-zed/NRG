@@ -6,6 +6,7 @@ import { uploadCurrentBill } from '../services/currentBill.service.js';
 import { currentBillFileFilter } from '../utils/upload.js';
 import errorHandler from '../middlewares/errorHandler.js';
 import AppError from '../utils/AppError.js';
+import { projectRequestSchema } from '../routes/project.routes.js';
 
 const makeResponse = () => ({
   statusCode: null,
@@ -80,6 +81,45 @@ test('project request without a bill keeps the URL null and does not upload', as
   assert.equal(uploadCalled, false);
   assert.equal(created.currentBillUrl, null);
   assert.equal(response.body.data.project.currentBillUrl, null);
+});
+
+test('project request calculates and snapshots the server-side estimate', async () => {
+  let created;
+  const response = makeResponse();
+  const estimateInputs = {
+    propertyType: 'residential',
+    location: 'Pune',
+    monthlyConsumptionKwh: 400,
+  };
+  await createProjectRequestWithDependencies(
+    { body: { ...requestBody, estimateInputs }, user: authUser },
+    response,
+    {
+      ...makeModels((payload) => { created = payload; }),
+      estimateProject: (input) => ({ estimate: true, inputs: input }),
+    }
+  );
+  assert.deepEqual(created.estimate, { estimate: true, inputs: estimateInputs });
+  assert.equal(response.body.data.project.trackingStatus, 'project-created');
+  assert.equal(created.trackingHistory[0].status, 'project-created');
+});
+
+test('project request accepts a validated JSON estimate snapshot in multipart input', () => {
+  const estimateInputs = {
+    propertyType: 'commercial',
+    location: 'Pune',
+    monthlyBillAmount: 25000,
+  };
+  const result = projectRequestSchema.validate({
+    location: 'Pune',
+    estimateInputs: JSON.stringify(estimateInputs),
+  });
+  assert.equal(result.error, undefined);
+  assert.deepEqual(result.value.estimateInputs, {
+    ...estimateInputs,
+    batteryRequired: false,
+    backupHours: 0,
+  });
 });
 
 test('project request requires an authenticated customer account', async () => {
@@ -181,7 +221,12 @@ test('project request with companyId attaches one targeted lead', async () => {
   );
 
   assert.equal(created.companyId, companyId);
-  assert.deepEqual(insertedLeads, [{ companyId, projectId: 'project-1', status: 'new' }]);
+  assert.deepEqual(insertedLeads, [{
+    companyId,
+    projectId: 'project-1',
+    customerId: authUser._id,
+    status: 'new',
+  }]);
   assert.equal(response.body.data.distributedLeads, 1);
   assert.equal(response.body.message, 'Project quote request created successfully');
 });

@@ -61,6 +61,16 @@ metadata are stored in MongoDB.
 | `GET  /auth/google/callback`    | Complete Google login and set the session cookie |
 | `POST /auth/logout`              | Revoke the current session and clear auth cookies |
 | `GET  /api/marketplace?category=...&page=&limit=&minPrice=&maxPrice=&sortBy=` | Product catalogue |
+| `GET  /api/companies?search=&location=&type=&verified=&minRating=&page=&limit=` | Search and filter public solar companies |
+| `GET  /api/companies/:companyId` | Public solar company profile |
+| `POST /api/estimator/estimate` | Calculate a configurable, non-binding solar planning estimate |
+| `POST /api/projects/request` | Create a customer quote request and optional estimate snapshot |
+| `GET  /api/projects/mine/tracking` | List the authenticated customer's tracked projects |
+| `GET  /api/projects/:projectId/tracking` | Read an authorized project's tracking history |
+| `GET  /api/projects/:projectId/quotes` | Compare vendor quotations |
+| `POST /api/projects/:projectId/quotes/:quoteId/approve` | Approve a submitted vendor quotation as its project owner |
+| `GET  /api/projects/vendor/tracking` | List projects assigned to the authenticated vendor |
+| `PATCH /api/projects/:projectId/tracking` | Advance one project lifecycle stage (assigned verified vendor/admin) |
 | `GET  /api/main-point/complain/listing`                  | Complaints for administrators or verified companies |
 | `POST /api/main-point/complain/call-log`                | Log a follow-up call as an administrator or verified company |
 | `POST /api/main-point/complain/company/:id`              | File a complaint as the authenticated customer     |
@@ -72,6 +82,20 @@ Every response uses the shape:
 ```json
 { "success": true, "data": null, "message": "…", "error": null }
 ```
+
+Solar estimates accept `propertyType`, `location`, either `monthlyBillAmount` or
+`monthlyConsumptionKwh`, and optional capacity, roof-area, and battery inputs.
+The response includes a configuration version and clearly marks its figures as
+planning estimates, not binding vendor quotations. Calculation defaults can be
+overridden with the `SOLAR_*` environment variables documented in
+`.env.example`.
+
+Customer project requests can include an `estimateInputs` object matching the
+estimator inputs; the backend recalculates and stores the estimate snapshot
+rather than trusting client-calculated figures. A customer can approve a
+submitted quotation; only then is its vendor assigned for progress management.
+Tracking updates follow the sequential lifecycle from Project Created through
+Project Completed. Customers can read but cannot edit tracking history.
 
 ### Sign-in strategies
 
