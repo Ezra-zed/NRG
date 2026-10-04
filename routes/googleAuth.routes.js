@@ -78,8 +78,8 @@ router.get('/google/callback', validateGoogleCallbackState, (req, res, next) => 
   })(req, res, next);
 });
 
-// GET /auth/me — returns the signed-in user from the nrg_session cookie.
-// Frontend calls this with `credentials: 'include'` on load to restore session.
+// GET /auth/me — restores the signed-in user from the access bearer token or
+// nrg_session cookie. Browser clients send credentials to retain cookie auth.
 router.get('/me', (req, res, next) => {
   // Express can return 304 from an ETag match before the controller responds,
   // even for no-store responses. Never let caller or intermediary validators

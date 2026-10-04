@@ -2,7 +2,7 @@ import User from '../../models/User.model.js';
 import AppError from '../../utils/AppError.js';
 import { verifyToken } from '../../utils/jwt.js';
 import { publicUser } from '../../utils/publicUser.js';
-import { parseCookies, SESSION_COOKIE } from '../../utils/cookies.js';
+import { extractToken, parseCookies, SESSION_COOKIE } from '../../utils/cookies.js';
 import AuthSession from '../../models/AuthSession.model.js';
 import {
   clearAuthCookies,
@@ -159,9 +159,10 @@ export const finishGoogleLogin = async (profile, req, res) => {
 /**
  * GET /auth/me — resolve the current signed-in user or return 401.
  *
- * Lets the frontend restore the session on load: with `credentials: 'include'`
- * the browser sends the nrg_session cookie and this returns the signed-in user,
- * so the user stays signed in across reloads. The frontend can rotate an
+ * Lets the frontend restore the session on load from either the access token
+ * returned by signup/signin or the HttpOnly session cookie. Supporting the
+ * bearer token also covers browsers that block cross-site cookies in a
+ * frontend/API deployment on different sites. The frontend can rotate an
  * expired access cookie through POST /api/refresh.
  */
 export const getCurrentUser = async (req, res, next) => {
@@ -173,8 +174,7 @@ export const getCurrentUser = async (req, res, next) => {
     });
     res.vary('Cookie');
     res.vary('Authorization');
-    const cookies = parseCookies(req.headers.cookie);
-    const token = cookies[SESSION_COOKIE];
+    const token = extractToken(req);
     if (!token) {
       return next(new AppError('Not authenticated.', 401));
     }

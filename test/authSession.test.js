@@ -12,6 +12,8 @@ import {
 import { REFRESH_COOKIE, SESSION_COOKIE } from '../utils/cookies.js';
 import { verifyToken } from '../utils/jwt.js';
 import { cookieOptions, refreshCookieOptions } from '../utils/oauthState.js';
+import { getCurrentUser } from '../controllers/auth/googleOAuth.controller.js';
+import { signup } from '../controllers/auth/signup.controller.js';
 
 process.env.JWT_SECRET = 'session-test-secret-with-enough-entropy';
 
@@ -35,6 +37,60 @@ test('production cookies enforce Secure, HttpOnly, SameSite=None, and matching p
   } finally {
     if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = previousNodeEnv;
+  }
+});
+
+test('signup returns a bearer session that GET /auth/me can restore when cookies are unavailable', async () => {
+  const originalSessionFindOne = AuthSession.findOne;
+  const originalSessionCreate = AuthSession.create;
+  const originalUserFindOne = User.findOne;
+  const originalUserFindById = User.findById;
+  const originalUserCreate = User.create;
+  const userId = '507f1f77bcf86cd799439011';
+  const user = { _id: { toString: () => userId }, id: userId, name: 'Customer', email: 'customer@example.com', role: 'user' };
+  let authSession;
+  let signupBody;
+  let nextError;
+  const signupCookies = [];
+  const signupRes = {
+    set: () => signupRes,
+    cookie: (name, value, options) => signupCookies.push({ name, value, options }),
+    status: (status) => { signupRes.statusCode = status; return signupRes; },
+    json: (value) => { signupBody = value; return signupRes; },
+  };
+  const meRes = {
+    set: () => meRes,
+    vary: () => meRes,
+    json: (value) => { meRes.body = value; return meRes; },
+  };
+
+  User.findOne = async () => null;
+  User.create = async () => user;
+  AuthSession.create = async (session) => { authSession = session; return session; };
+  AuthSession.findOne = (query) => ({
+    select: () => ({ lean: async () => query._id === authSession?._id && query.userId === userId && query.revokedAt === null ? authSession : null }),
+  });
+  User.findById = (id) => ({ select: async () => id === userId ? user : null });
+
+  try {
+    await signup({ body: { role: 'user', name: 'Customer', email: 'customer@example.com', phone: '+15555550123', password: 'safe-password' } }, signupRes);
+    const token = signupBody?.data?.token;
+    assert.equal(signupBody?.success, true);
+    assert.equal(signupBody?.data?.user?.role, 'user');
+    assert.ok(token);
+    assert.ok(signupCookies.some(({ name, value }) => name === SESSION_COOKIE && value === token));
+
+    await getCurrentUser({ headers: { authorization: `Bearer ${token}`, cookie: '' } }, meRes, (error) => { nextError = error; });
+    assert.equal(nextError, undefined);
+    assert.equal(meRes.body?.success, true);
+    assert.equal(meRes.body?.data?.user?.id, userId);
+    assert.equal(meRes.body?.data?.user?.role, 'user');
+  } finally {
+    AuthSession.findOne = originalSessionFindOne;
+    AuthSession.create = originalSessionCreate;
+    User.findOne = originalUserFindOne;
+    User.findById = originalUserFindById;
+    User.create = originalUserCreate;
   }
 });
 

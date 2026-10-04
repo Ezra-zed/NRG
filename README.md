@@ -150,7 +150,8 @@ POST /api/refresh     # requires cookies and returns a new access token
 POST /api/logout      # revokes the session and clears both cookies
 ```
 
-`GET /auth/me` must be called with `credentials: 'include'` from the frontend,
+`GET /auth/me` accepts the access bearer token returned by signup/signin or the
+`nrg_session` cookie. Browser clients should call it with `credentials: 'include'`,
 as must refresh and logout. Configure the frontend origin in the environment;
 CORS allows credentials only for configured origins. In production cookies use
 `SameSite=None; Secure` for cross-site frontend/API deployments, and unsafe
