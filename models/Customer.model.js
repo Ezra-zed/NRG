@@ -45,6 +45,12 @@ const customerSchema = new mongoose.Schema(
     monthlyBillAmount: { type: Number, min: 0 },
     requiredPower: { type: Number, min: 0 },
     requiredSystemSize: { type: String, trim: true },
+    policyConsent: {
+      accepted: { type: Boolean, default: false },
+      acceptedAt: { type: Date },
+      termsVersion: { type: String, trim: true },
+      privacyVersion: { type: String, trim: true },
+    },
   },
   {
     timestamps: true,

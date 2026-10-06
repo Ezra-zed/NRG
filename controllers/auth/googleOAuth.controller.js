@@ -20,6 +20,7 @@ import {
 import { DEFAULT_PRODUCTION_FRONTEND_URL } from '../../utils/securityConfig.js';
 
 const LEGACY_PRODUCTION_FRONTEND_URL = 'https://enrg-front-end-uyv.vercel.app';
+const GOOGLE_POLICY_COOKIE = 'nrg_google_policy_consent';
 
 const getHomeRedirectUrl = (req) => {
   const host = (req?.headers?.host || '').toLowerCase();
@@ -62,6 +63,7 @@ export const startGoogleLogin = (req, res, next) => {
     const state = createOAuthState();
     res.locals.googleOAuthState = state;
     res.cookie(GOOGLE_STATE_COOKIE, state, oauthStateCookieOptions(STATE_MAX_AGE_MS));
+    res.cookie(GOOGLE_POLICY_COOKIE, req.query.acceptPolicies === 'true' ? 'accepted' : 'missing', oauthStateCookieOptions(STATE_MAX_AGE_MS));
     logOAuth('STATE_CREATED', {
       method: req.method,
       url: req.originalUrl,
@@ -84,6 +86,7 @@ export const validateGoogleCallbackState = (req, res, next) => {
   const cookieMatches = Boolean(stateCookie && queryState && stateCookie === queryState);
 
   res.clearCookie(GOOGLE_STATE_COOKIE, oauthStateCookieOptions());
+  res.clearCookie(GOOGLE_POLICY_COOKIE, oauthStateCookieOptions());
   logOAuth('STATE_VALIDATION', {
     method: req.method,
     url: req.originalUrl,
@@ -120,12 +123,17 @@ export const finishGoogleLogin = async (profile, req, res) => {
   let created = false;
 
   if (!user) {
+    const cookies = parseCookies(req.headers.cookie);
+    if (cookies[GOOGLE_POLICY_COOKIE] !== 'accepted') {
+      throw new AppError('You must accept the Terms & Conditions and Privacy Policy before creating an account.', 400, true, 'POLICY_CONSENT_REQUIRED');
+    }
     user = await User.create({
       role: 'user',
       name: profile.displayName || email,
       email,
       authProvider: 'O-auth',
       oauthId,
+      policyConsent: { accepted: true, acceptedAt: new Date(), termsVersion: process.env.TERMS_VERSION || '1.0', privacyVersion: process.env.PRIVACY_VERSION || '1.0' },
     });
     created = true;
   } else if (!user.oauthId) {

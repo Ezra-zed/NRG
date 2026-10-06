@@ -70,6 +70,12 @@ const userSchema = new mongoose.Schema(
     gstin: { type: String, trim: true, uppercase: true },
     // Installer company details (role === 'install-co')
     licenseNumber: { type: String, trim: true },
+    policyConsent: {
+      accepted: { type: Boolean, default: false },
+      acceptedAt: { type: Date },
+      termsVersion: { type: String, trim: true },
+      privacyVersion: { type: String, trim: true },
+    },
   },
   {
     timestamps: true,

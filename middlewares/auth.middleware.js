@@ -116,3 +116,10 @@ export async function requireAdminOrCompany(req, res, next) {
   if (req.user?.role === 'admin') return next();
   return requireVerifiedCompany(req, res, next);
 }
+
+/** Allow administrators or a verified installer account. */
+export async function requireAdminOrInstaller(req, res, next) {
+  if (req.user?.role === 'admin') return next();
+  if (req.user?.role !== 'install-co') return next(new AppError('Installer access required.', 403, true, 'FORBIDDEN'));
+  return requireVerifiedCompany(req, res, next);
+}

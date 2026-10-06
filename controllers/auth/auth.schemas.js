@@ -46,6 +46,7 @@ export const signupSchema = Joi.object({
     email: emailSchema.required(),
     phone: phoneSchema.required(),
     password: Joi.string().min(6).required().messages({ 'string.min': 'Password must be at least 6 characters' }),
+    acceptPolicies: Joi.boolean().valid(true).required().messages({ 'any.only': 'You must accept the Terms & Conditions and Privacy Policy to register', 'any.required': 'You must accept the Terms & Conditions and Privacy Policy to register' }),
     // role-specific
     businessName: Joi.string().trim().min(2).empty('').optional().messages({ 'string.min': 'businessName must be at least 2 characters' })
       .when('role', { is: 'seller-co', then: Joi.required().messages({ 'any.required': 'businessName is required for solar-seller-company' }) }),

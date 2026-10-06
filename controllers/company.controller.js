@@ -6,6 +6,7 @@ import AppError from '../utils/AppError.js';
 import { sendSuccess } from '../utils/apiResponse.js';
 import { publicFileUrl } from '../utils/upload.js';
 import { assertObjectId } from './project.controller.js';
+import { activateOrderTracking } from '../services/projectTracking.service.js';
 
 export const upsertCompanyProfile = async (req, res) => {
   const companyId = req.user._id || req.user.id;
@@ -268,6 +269,9 @@ export const updateLeadWithDependencies = async (
     throw new AppError('Closed leads cannot be changed.', 409, true, 'LEAD_CLOSED');
   }
 
+  if (status === 'accepted' && lead.status !== 'accepted') {
+    await activateOrderTracking({ projectId: lead.projectId, companyId, actorId: companyId, actorRole: req.user.role });
+  }
   if (status !== undefined) lead.status = status;
 
   if (quote !== undefined && quote !== null && Object.keys(quote).length) {

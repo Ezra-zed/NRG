@@ -73,7 +73,7 @@ test('signup returns a bearer session that GET /auth/me can restore when cookies
   User.findById = (id) => ({ select: async () => id === userId ? user : null });
 
   try {
-    await signup({ body: { role: 'user', name: 'Customer', email: 'customer@example.com', phone: '+15555550123', password: 'safe-password' } }, signupRes);
+    await signup({ body: { role: 'user', name: 'Customer', email: 'customer@example.com', phone: '+15555550123', password: 'safe-password', acceptPolicies: true } }, signupRes);
     const token = signupBody?.data?.token;
     assert.equal(signupBody?.success, true);
     assert.equal(signupBody?.data?.user?.role, 'user');

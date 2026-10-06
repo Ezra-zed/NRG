@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
 import { PROJECT_LIFECYCLE_STATUSES } from '../config/projectLifecycle.js';
 
+const orderStageEnum = ['order-placed', 'order-confirmed', 'installer-assigned', 'site-survey', 'installation-scheduled', 'installation-in-progress', 'installation-completed'];
+
 /**
  * Project — a "Get Solar Quote" request plus the quotes companies have
  * submitted against it.
@@ -73,6 +75,18 @@ const projectSchema = new mongoose.Schema(
     },
     expectedCompletionAt: { type: Date, default: null },
     trackingHistory: { type: [projectTrackingEventSchema], default: [] },
+    orderStage: { type: String, enum: orderStageEnum, default: 'order-placed', index: true },
+    orderHistory: {
+      type: [{
+        status: { type: String, enum: orderStageEnum, required: true },
+        message: { type: String, trim: true, maxlength: 1000 },
+        actorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        actorRole: { type: String, enum: ['user', 'seller-co', 'install-co', 'admin', 'system'], required: true },
+        createdAt: { type: Date, default: Date.now },
+      }],
+      default: [],
+    },
+    installationCompletedAt: { type: Date, default: null, index: true },
     status: {
       type: String,
       enum: ['pending', 'quoted', 'in-progress', 'completed', 'cancelled'],

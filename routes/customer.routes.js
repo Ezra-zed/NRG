@@ -31,6 +31,7 @@ const registerSchema = Joi.object({
   propertyType: optStr(Joi.string().valid('residential', 'commercial', 'industrial', 'other')),
   monthlyBillAmount: Joi.number().min(0).empty('').optional(),
   requiredSystemSize: optStr(Joi.string().trim()),
+  acceptPolicies: Joi.boolean().valid(true).required().messages({ 'any.only': 'You must accept the Terms & Conditions and Privacy Policy to register', 'any.required': 'You must accept the Terms & Conditions and Privacy Policy to register' }),
 });
 
 /**

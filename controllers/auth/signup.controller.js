@@ -72,7 +72,10 @@ export const signup = async (req, res) => {
     businessName,
     gstin,
     licenseNumber,
+    acceptPolicies,
   } = req.body;
+
+  if (acceptPolicies !== true) throw new AppError('You must accept the Terms & Conditions and Privacy Policy to register.', 400, true, 'POLICY_CONSENT_REQUIRED');
 
   // The role-aware branch requirements were already enforced by the Joi schema,
   // but a defensive duplicate check keeps direct helper misuse safe.
@@ -93,6 +96,7 @@ export const signup = async (req, res) => {
     businessName: role === 'user' ? undefined : businessName,
     gstin: role === 'user' ? undefined : gstin,
     licenseNumber: role === 'user' ? undefined : licenseNumber,
+    policyConsent: { accepted: true, acceptedAt: new Date(), termsVersion: process.env.TERMS_VERSION || '1.0', privacyVersion: process.env.PRIVACY_VERSION || '1.0' },
   });
 
   // Password is excluded by the model's toJSON transform.

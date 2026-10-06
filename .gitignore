@@ -7,3 +7,4 @@ uploads/
 .context/
 .img
 .vscode/
+.env.prod

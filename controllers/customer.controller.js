@@ -33,7 +33,9 @@ export const registerCustomer = async (req, res) => {
     propertyType,
     monthlyBillAmount,
     requiredSystemSize,
+    acceptPolicies,
   } = req.body;
+  if (acceptPolicies !== true) throw new AppError('You must accept the Terms & Conditions and Privacy Policy to register.', 400, true, 'POLICY_CONSENT_REQUIRED');
   const file = req.file;
 
   const customer = new Customer({
@@ -43,6 +45,7 @@ export const registerCustomer = async (req, res) => {
     location: location || undefined,
     pincode: pincode || undefined,
     propertyType: propertyType || undefined,
+    policyConsent: { accepted: true, acceptedAt: new Date(), termsVersion: process.env.TERMS_VERSION || '1.0', privacyVersion: process.env.PRIVACY_VERSION || '1.0' },
   });
   if (monthlyBillAmount !== undefined && monthlyBillAmount !== '') {
     customer.monthlyBillAmount = Number(monthlyBillAmount);

@@ -23,6 +23,7 @@ import { UPLOAD_DIR } from './utils/upload.js';
 import protectCookieAuthenticatedWrites from './middlewares/csrf.middleware.js';
 import { getAllowedOrigins } from './utils/securityConfig.js';
 import Customer from './models/Customer.model.js';
+import { startMaintenanceReminderJob } from './services/maintenanceReminder.job.js';
 
 /**
  * Build & boot the Express application.
@@ -112,6 +113,7 @@ const HOST = "0.0.0.0";
 
 const startServer = async () => {
   await connectDB();
+  startMaintenanceReminderJob();
 
   app.listen(PORT, HOST, () => {
     if (process.env.NODE_ENV === "production") {

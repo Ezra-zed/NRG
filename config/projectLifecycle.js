@@ -14,6 +14,23 @@ export const PROJECT_LIFECYCLE = Object.freeze([
 
 export const PROJECT_LIFECYCLE_STATUSES = PROJECT_LIFECYCLE.map(({ status }) => status);
 
+// Customer-facing order journey. The original quote/procurement lifecycle
+// remains available for existing clients and history records.
+export const ORDER_STAGES = Object.freeze([
+  { status: 'order-placed', label: 'Order Placed' },
+  { status: 'order-confirmed', label: 'Order Confirmed' },
+  { status: 'installer-assigned', label: 'Installer Assigned' },
+  { status: 'site-survey', label: 'Site Survey' },
+  { status: 'installation-scheduled', label: 'Installation Scheduled' },
+  { status: 'installation-in-progress', label: 'Installation In Progress' },
+  { status: 'installation-completed', label: 'Installation Completed' },
+]);
+export const ORDER_STAGE_STATUSES = ORDER_STAGES.map(({ status }) => status);
+export const orderStageProgress = (status) => {
+  const index = ORDER_STAGE_STATUSES.indexOf(status);
+  return index < 0 ? 0 : Math.round((index / (ORDER_STAGES.length - 1)) * 100);
+};
+
 export const lifecycleProgress = (status) => {
   const index = PROJECT_LIFECYCLE_STATUSES.indexOf(status);
   if (index < 0) return 0;

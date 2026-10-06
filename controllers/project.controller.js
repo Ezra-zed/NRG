@@ -7,6 +7,9 @@ import { sendSuccess } from '../utils/apiResponse.js';
 import { uploadCurrentBill } from '../services/currentBill.service.js';
 import { calculateSolarEstimate } from '../services/solarEstimator.service.js';
 import { PROJECT_LIFECYCLE, PROJECT_LIFECYCLE_STATUSES, lifecycleProgress } from '../config/projectLifecycle.js';
+import { advanceOrderStage, orderTrackingView } from '../services/projectTracking.service.js';
+import MaintenanceRequest from '../models/MaintenanceRequest.model.js';
+import MaintenanceReminder from '../models/MaintenanceReminder.model.js';
 
 export const assertObjectId = (id, label = 'id') => {
   if (!mongoose.Types.ObjectId.isValid(String(id))) {
@@ -96,6 +99,7 @@ export const createProjectRequestWithDependencies = async (
       createdAt,
     });
   }
+  const orderHistory = [{ status: 'order-placed', message: 'Solar project order placed.', actorId: authenticatedCustomerId, actorRole: 'user', createdAt }];
 
   const project = await projectModel.create({
     customerId: customerId || undefined,
@@ -116,6 +120,8 @@ export const createProjectRequestWithDependencies = async (
     status: 'pending',
     trackingStatus: selectedCompany ? 'vendor-selected' : 'project-created',
     trackingHistory,
+    orderStage: 'order-placed',
+    orderHistory,
   });
 
   // A selected company receives only its own lead; without a selection the
@@ -144,6 +150,7 @@ export const createProjectRequestWithDependencies = async (
     trackingStatus: project.trackingStatus,
     trackingUrl: `/api/projects/${project._id}/tracking`,
     createdAt: project.createdAt,
+    orderStage: project.orderStage || 'order-placed',
   };
 
   sendSuccess(
@@ -228,6 +235,7 @@ const toTrackingResponse = (project) => {
       important: Boolean(event.important),
       createdAt: event.createdAt,
     })),
+    ...orderTrackingView(project),
   };
 };
 
@@ -349,6 +357,58 @@ export const updateProjectTrackingWithDependencies = async (
 
 export const updateProjectTracking = (req, res) => updateProjectTrackingWithDependencies(req, res);
 
+export const updateOrderTracking = async (req, res) => {
+  const projectId = req.params.projectId;
+  assertObjectId(projectId, 'projectId');
+  const actorId = req.user._id || req.user.id;
+  const project = await advanceOrderStage({
+    projectId, companyId: actorId, actorId, actorRole: req.user.role,
+    status: req.body.status, message: req.body.message,
+  });
+  sendSuccess(res, 200, { ...orderTrackingView(project), projectId: project._id.toString() }, 'Order tracking updated.');
+};
+
+export const requestMaintenance = async (req, res) => {
+  const { projectId } = req.params;
+  assertObjectId(projectId, 'projectId');
+  const customerId = req.user._id || req.user.id;
+  const project = await Project.findOne({ _id: projectId, userId: customerId, orderStage: 'installation-completed', status: { $ne: 'cancelled' } }).select('_id companyId').lean();
+  if (!project) throw new AppError('Completed project not found for this customer.', 404, true, 'PROJECT_NOT_FOUND');
+  if (!project.companyId) throw new AppError('No installer is assigned to this project.', 409, true, 'INSTALLER_NOT_ASSIGNED');
+  const request = await MaintenanceRequest.create({ projectId, customerId, companyId: project.companyId, message: req.body.message || '' });
+  sendSuccess(res, 201, { request }, 'Maintenance request sent to your installer.');
+};
+
+export const getMaintenanceReminder = async (req, res) => {
+  const { projectId } = req.params;
+  assertObjectId(projectId, 'projectId');
+  const customerId = req.user._id || req.user.id;
+  if (!await Project.exists({ _id: projectId, userId: customerId })) throw new AppError('Project not found.', 404);
+  const reminder = await MaintenanceReminder.findOne({ projectId, customerId }).select('status scheduledAt sentAt').lean();
+  sendSuccess(res, 200, { reminder: reminder || null }, 'Maintenance reminder status fetched.');
+};
+
+export const getVendorMaintenanceRequests = async (req, res) => {
+  const companyId = req.user._id || req.user.id;
+  const items = await MaintenanceRequest.find(req.user.role === 'admin' ? {} : { companyId }).populate('projectId', 'location orderStage').populate('customerId', 'name email').sort({ createdAt: -1 }).limit(100).lean();
+  sendSuccess(res, 200, { items: items.map((item) => ({
+    id: item._id.toString(), status: item.status, message: item.message || '', createdAt: item.createdAt,
+    projectId: item.projectId?._id?.toString(), location: item.projectId?.location || null,
+    customerName: item.customerId?.name || 'Customer',
+  })) }, 'Maintenance requests fetched.');
+};
+
+export const updateMaintenanceRequestStatus = async (req, res) => {
+  const companyId = req.user._id || req.user.id;
+  assertObjectId(req.params.requestId, 'requestId');
+  const request = await MaintenanceRequest.findOneAndUpdate(
+    { _id: req.params.requestId, ...(req.user.role === 'admin' ? {} : { companyId }), status: { $in: ['open', 'in-progress'] } },
+    { $set: { status: req.body.status } }, { new: true, runValidators: true },
+  );
+  if (!request) throw new AppError('Maintenance request is not available to update.', 404);
+  sendSuccess(res, 200, { id: request._id.toString(), status: request.status }, 'Maintenance request updated.');
+};
+
 export const approveProjectQuoteWithDependencies = async (
   req,
   res,
@@ -364,12 +424,15 @@ export const approveProjectQuoteWithDependencies = async (
     userId: customerId,
     trackingStatus: { $in: ['project-created', 'vendor-selected'] },
     quotes: { $elemMatch: { _id: quoteId, status: 'submitted' } },
-  }).select('quotes trackingStatus');
+  }).select('quotes trackingStatus companyId');
   if (!currentProject) {
     throw new AppError('Submitted quote not found for this customer project.', 404);
   }
 
   const quote = currentProject.quotes.id(quoteId);
+  if (currentProject.companyId && String(currentProject.companyId) !== String(quote.companyId)) {
+    throw new AppError('This project is assigned to another installer.', 409, true, 'PROJECT_ALREADY_ASSIGNED');
+  }
   const vendorSelected = currentProject.trackingStatus === 'project-created';
   const history = [];
   if (vendorSelected) {

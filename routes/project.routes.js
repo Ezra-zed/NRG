@@ -8,9 +8,15 @@ import {
   getProjectTracking,
   getVendorProjects,
   updateProjectTracking,
+  updateOrderTracking,
+  requestMaintenance,
+  getMaintenanceReminder,
+  getVendorMaintenanceRequests,
+  updateMaintenanceRequestStatus,
 } from '../controllers/project.controller.js';
 import authenticate, {
   requireAdminOrCompany,
+  requireAdminOrInstaller,
   requireCustomer,
   requireVerifiedCompany,
 } from '../middlewares/auth.middleware.js';
@@ -78,9 +84,19 @@ const trackingUpdateSchema = Joi.object({
   important: Joi.boolean().default(false),
   expectedCompletionAt: Joi.date().iso().min('now').allow(null).optional(),
 }).or('status', 'message', 'expectedCompletionAt');
+const orderTrackingUpdateSchema = Joi.object({
+  status: Joi.string().valid('site-survey', 'installation-scheduled', 'installation-in-progress', 'installation-completed').required(),
+  message: Joi.string().trim().max(1000).allow('').optional(),
+});
+const maintenanceRequestSchema = Joi.object({ message: Joi.string().trim().max(1000).allow('').optional() });
 
 router.get('/mine/tracking', authenticate, requireCustomer, asyncHandler(getCustomerProjects));
 router.get('/vendor/tracking', authenticate, requireVerifiedCompany, asyncHandler(getVendorProjects));
+router.get('/vendor/maintenance-requests', authenticate, requireAdminOrInstaller, asyncHandler(getVendorMaintenanceRequests));
+router.patch('/vendor/maintenance-requests/:requestId', authenticate, requireAdminOrInstaller, validate(Joi.object({ requestId: objectId.required() }), 'params'), validate(Joi.object({ status: Joi.string().valid('in-progress', 'resolved').required() })), asyncHandler(updateMaintenanceRequestStatus));
+router.patch('/:projectId/order-tracking', authenticate, requireAdminOrInstaller, rateLimit({ max: 30 }), validate(projectIdParams, 'params'), validate(orderTrackingUpdateSchema), asyncHandler(updateOrderTracking));
+router.post('/:projectId/maintenance-requests', authenticate, requireCustomer, rateLimit({ max: 5 }), validate(projectIdParams, 'params'), validate(maintenanceRequestSchema), asyncHandler(requestMaintenance));
+router.get('/:projectId/maintenance-reminder', authenticate, requireCustomer, validate(projectIdParams, 'params'), asyncHandler(getMaintenanceReminder));
 router.patch(
   '/:projectId/tracking',
   authenticate,
