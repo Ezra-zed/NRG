@@ -1,8 +1,41 @@
 import User from '../../models/User.model.js';
 import AppError from '../../utils/AppError.js';
-import { createAuthSession } from '../../utils/authSession.js';
+import { createAuthSessionForClient } from '../../utils/authSession.js';
 import { sendSuccess } from '../../utils/apiResponse.js';
 import { publicUser } from '../../utils/publicUser.js';
+import { isNativeClient } from '../../utils/nativeClient.js';
+
+export const signupDuplicateError = (fields) => {
+  const duplicateFields = new Set(fields);
+  const hasEmail = duplicateFields.has('email');
+  const hasPhone = duplicateFields.has('phone');
+
+  if (hasEmail && hasPhone) {
+    return new AppError(
+      'This email address and phone number are already registered. Sign in to your existing account or use different contact details.',
+      409,
+      true,
+      'SIGNUP_EMAIL_AND_PHONE_ALREADY_REGISTERED',
+    );
+  }
+  if (hasEmail) {
+    return new AppError(
+      'This email address is already registered. Sign in to your existing account or use a different email address.',
+      409,
+      true,
+      'SIGNUP_EMAIL_ALREADY_REGISTERED',
+    );
+  }
+  if (hasPhone) {
+    return new AppError(
+      'This phone number is already registered. Sign in to your existing account or use a different phone number.',
+      409,
+      true,
+      'SIGNUP_PHONE_ALREADY_REGISTERED',
+    );
+  }
+  return null;
+};
 
 /**
  * Sign up a new user.
@@ -77,30 +110,45 @@ export const signup = async (req, res) => {
 
   if (acceptPolicies !== true) throw new AppError('You must accept the Terms & Conditions and Privacy Policy to register.', 400, true, 'POLICY_CONSENT_REQUIRED');
 
-  // The role-aware branch requirements were already enforced by the Joi schema,
-  // but a defensive duplicate check keeps direct helper misuse safe.
-  const existing = await User.findOne({ $or: [{ email }, { phone }] });
-  if (existing) {
-    const taken = existing.email === email ? 'email' : 'phone';
-    throw new AppError(`This ${taken} is already registered. Please sign in instead.`, 409);
+  const [existingEmail, existingPhone] = await Promise.all([
+    User.findOne({ email }),
+    User.findOne({ phone }),
+  ]);
+  const duplicateError = signupDuplicateError([
+    ...(existingEmail ? ['email'] : []),
+    ...(existingPhone ? ['phone'] : []),
+  ]);
+  if (duplicateError) throw duplicateError;
+
+  let user;
+  try {
+    user = await User.create({
+      role,
+      name,
+      email,
+      phone,
+      password, // hashed by the User schema pre-save hook
+      authProvider: password ? 'JWT-auth' : 'no-password',
+      oauthId: undefined,
+      businessName: role === 'user' ? undefined : businessName,
+      gstin: role === 'user' ? undefined : gstin,
+      licenseNumber: role === 'user' ? undefined : licenseNumber,
+      policyConsent: { accepted: true, acceptedAt: new Date(), termsVersion: process.env.TERMS_VERSION || '1.0', privacyVersion: process.env.PRIVACY_VERSION || '1.0' },
+    });
+  } catch (error) {
+    if (error?.code === 11000) {
+      const fields = new Set([
+        ...Object.keys(error.keyPattern || {}),
+        ...Object.keys(error.keyValue || {}),
+      ]);
+      const duplicateError = signupDuplicateError(fields);
+      if (duplicateError) throw duplicateError;
+    }
+    throw error;
   }
 
-  const user = await User.create({
-    role,
-    name,
-    email,
-    phone,
-    password, // hashed by the User schema pre-save hook
-    authProvider: password ? 'JWT-auth' : 'no-password',
-    oauthId: undefined,
-    businessName: role === 'user' ? undefined : businessName,
-    gstin: role === 'user' ? undefined : gstin,
-    licenseNumber: role === 'user' ? undefined : licenseNumber,
-    policyConsent: { accepted: true, acceptedAt: new Date(), termsVersion: process.env.TERMS_VERSION || '1.0', privacyVersion: process.env.PRIVACY_VERSION || '1.0' },
-  });
-
   // Password is excluded by the model's toJSON transform.
-  const token = await createAuthSession(user, res);
+  const { token, refreshToken } = await createAuthSessionForClient(user, res, isNativeClient(req));
 
-  sendSuccess(res, 201, { user: publicUser(user), token }, `Account created as ${role}.`);
+  sendSuccess(res, 201, { user: publicUser(user), token, ...(refreshToken ? { refreshToken } : {}) }, `Account created as ${role}.`);
 };
