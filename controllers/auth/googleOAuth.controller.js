@@ -25,6 +25,12 @@ import { getMobileAuthRedirectUri } from '../../utils/nativeClient.js';
 
 const LEGACY_PRODUCTION_FRONTEND_URL = 'https://enrg-front-end-uyv.vercel.app';
 const GOOGLE_POLICY_COOKIE = 'nrg_google_policy_consent';
+const acceptedPolicyConsent = () => ({
+  accepted: true,
+  acceptedAt: new Date(),
+  termsVersion: process.env.TERMS_VERSION || '1.0',
+  privacyVersion: process.env.PRIVACY_VERSION || '1.0',
+});
 
 const getHomeRedirectUrl = (req) => {
   const host = (req?.headers?.host || '').toLowerCase();
@@ -125,10 +131,10 @@ export const finishGoogleLogin = async (profile, req, res) => {
   const oauthId = `google-${profile.id}`;
   let user = await User.findOne({ $or: [{ oauthId }, { email }] });
   let created = false;
+  const policyAccepted = parseCookies(req.headers.cookie)[GOOGLE_POLICY_COOKIE] === 'accepted';
 
   if (!user) {
-    const cookies = parseCookies(req.headers.cookie);
-    if (cookies[GOOGLE_POLICY_COOKIE] !== 'accepted') {
+    if (!policyAccepted) {
       throw new AppError('You must accept the Terms & Conditions and Privacy Policy before creating an account.', 400, true, 'POLICY_CONSENT_REQUIRED');
     }
     user = await User.create({
@@ -137,12 +143,20 @@ export const finishGoogleLogin = async (profile, req, res) => {
       email,
       authProvider: 'O-auth',
       oauthId,
-      policyConsent: { accepted: true, acceptedAt: new Date(), termsVersion: process.env.TERMS_VERSION || '1.0', privacyVersion: process.env.PRIVACY_VERSION || '1.0' },
+      policyConsent: acceptedPolicyConsent(),
     });
     created = true;
-  } else if (!user.oauthId) {
-    user.oauthId = oauthId;
-    await user.save();
+  } else {
+    let changed = false;
+    if (!user.oauthId) {
+      user.oauthId = oauthId;
+      changed = true;
+    }
+    if (policyAccepted && user.policyConsent?.accepted !== true) {
+      user.policyConsent = acceptedPolicyConsent();
+      changed = true;
+    }
+    if (changed) await user.save();
   }
 
   // Resolve this before setting the session cookie so a configuration error
@@ -194,11 +208,19 @@ export const finishNativeGoogleLogin = async (profile, req, res) => {
       email,
       authProvider: 'O-auth',
       oauthId,
-      policyConsent: { accepted: true, acceptedAt: new Date(), termsVersion: process.env.TERMS_VERSION || '1.0', privacyVersion: process.env.PRIVACY_VERSION || '1.0' },
+      policyConsent: acceptedPolicyConsent(),
     });
-  } else if (!user.oauthId) {
-    user.oauthId = oauthId;
-    await user.save();
+  } else {
+    let changed = false;
+    if (!user.oauthId) {
+      user.oauthId = oauthId;
+      changed = true;
+    }
+    if (state.acceptPolicies && user.policyConsent?.accepted !== true) {
+      user.policyConsent = acceptedPolicyConsent();
+      changed = true;
+    }
+    if (changed) await user.save();
   }
 
   const session = await createNativeAuthSession(user);
