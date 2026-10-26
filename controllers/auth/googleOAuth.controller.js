@@ -16,6 +16,7 @@ import {
 import {
   createOAuthState,
   GOOGLE_STATE_COOKIE,
+  hasAcceptedOAuthPolicies,
   isValidOAuthState,
   oauthStateCookieOptions,
   STATE_MAX_AGE_MS,
@@ -24,7 +25,6 @@ import { DEFAULT_PRODUCTION_FRONTEND_URL } from '../../utils/securityConfig.js';
 import { getMobileAuthRedirectUri } from '../../utils/nativeClient.js';
 
 const LEGACY_PRODUCTION_FRONTEND_URL = 'https://enrg-front-end-uyv.vercel.app';
-const GOOGLE_POLICY_COOKIE = 'nrg_google_policy_consent';
 const acceptedPolicyConsent = () => ({
   accepted: true,
   acceptedAt: new Date(),
@@ -70,10 +70,9 @@ const logOAuth = (label, details) => {
 
 export const startGoogleLogin = (req, res, next) => {
   try {
-    const state = createOAuthState();
+    const state = createOAuthState(req.query.acceptPolicies === 'true');
     res.locals.googleOAuthState = state;
     res.cookie(GOOGLE_STATE_COOKIE, state, oauthStateCookieOptions(STATE_MAX_AGE_MS));
-    res.cookie(GOOGLE_POLICY_COOKIE, req.query.acceptPolicies === 'true' ? 'accepted' : 'missing', oauthStateCookieOptions(STATE_MAX_AGE_MS));
     logOAuth('STATE_CREATED', {
       method: req.method,
       url: req.originalUrl,
@@ -94,9 +93,7 @@ export const validateGoogleCallbackState = (req, res, next) => {
 
   const stateValid = isValidOAuthState(queryState);
   const cookieMatches = Boolean(stateCookie && queryState && stateCookie === queryState);
-
   res.clearCookie(GOOGLE_STATE_COOKIE, oauthStateCookieOptions());
-  res.clearCookie(GOOGLE_POLICY_COOKIE, oauthStateCookieOptions());
   logOAuth('STATE_VALIDATION', {
     method: req.method,
     url: req.originalUrl,
@@ -110,6 +107,7 @@ export const validateGoogleCallbackState = (req, res, next) => {
     return next(new AppError('Invalid or expired OAuth state parameter.', 403, true, 'INVALID_OAUTH_STATE'));
   }
 
+  req.googlePolicyConsent = hasAcceptedOAuthPolicies(queryState);
   return next();
 };
 
@@ -131,7 +129,7 @@ export const finishGoogleLogin = async (profile, req, res) => {
   const oauthId = `google-${profile.id}`;
   let user = await User.findOne({ $or: [{ oauthId }, { email }] });
   let created = false;
-  const policyAccepted = parseCookies(req.headers.cookie)[GOOGLE_POLICY_COOKIE] === 'accepted';
+  const policyAccepted = req.googlePolicyConsent === true;
 
   if (!user) {
     if (!policyAccepted) {

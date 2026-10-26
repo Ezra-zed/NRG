@@ -7,12 +7,12 @@ const getStateSecret = () => process.env.JWT_SECRET || process.env.OAUTH_CLIENT_
 
 const signState = (state) => createHmac('sha256', getStateSecret()).update(state).digest('base64url');
 
-export const createOAuthState = () => {
+export const createOAuthState = (acceptPolicies = false) => {
   if (!getStateSecret()) {
     throw new Error('JWT_SECRET or OAUTH_CLIENT_SECRET must be set for OAuth state protection.');
   }
 
-  const state = `${Date.now()}.${randomBytes(24).toString('base64url')}`;
+  const state = `${Date.now()}.${randomBytes(24).toString('base64url')}.${acceptPolicies === true ? '1' : '0'}`;
   return `${state}.${signState(state)}`;
 };
 
@@ -34,6 +34,12 @@ export const isValidOAuthState = (value) => {
   const expectedBuffer = Buffer.from(expected);
   return actualBuffer.length === expectedBuffer.length
     && timingSafeEqual(actualBuffer, expectedBuffer);
+};
+
+export const hasAcceptedOAuthPolicies = (value) => {
+  if (!isValidOAuthState(value)) return false;
+  const state = value.slice(0, value.lastIndexOf('.'));
+  return state.split('.')[2] === '1';
 };
 
 export const cookieOptions = (maxAge) => {

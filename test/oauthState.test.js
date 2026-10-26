@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import test from 'node:test';
-import { createOAuthState, GOOGLE_STATE_COOKIE } from '../utils/oauthState.js';
+import {
+  createOAuthState,
+  GOOGLE_STATE_COOKIE,
+  hasAcceptedOAuthPolicies,
+} from '../utils/oauthState.js';
 import { validateGoogleCallbackState } from '../controllers/auth/googleOAuth.controller.js';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'oauth-state-test-secret';
@@ -14,11 +18,32 @@ const runMiddleware = (req) => new Promise((resolve) => {
 
 test('oauth state: valid state with matching cookie passes', async () => {
   const state = createOAuthState();
-  const error = await runMiddleware({
+  const req = {
     headers: { cookie: `${GOOGLE_STATE_COOKIE}=${state}` },
     query: { state },
-  });
+  };
+  const error = await runMiddleware(req);
   assert.equal(error, null);
+  assert.equal(req.googlePolicyConsent, false);
+});
+
+test('oauth state: policy consent survives the OAuth redirect in signed state', async () => {
+  const state = createOAuthState(true);
+  const req = {
+    headers: { cookie: `${GOOGLE_STATE_COOKIE}=${state}` },
+    query: { state },
+  };
+
+  const error = await runMiddleware(req);
+
+  assert.equal(error, null);
+  assert.equal(hasAcceptedOAuthPolicies(state), true);
+  assert.equal(req.googlePolicyConsent, true);
+});
+
+test('oauth state: policy consent cannot be read from an invalid state', () => {
+  const state = createOAuthState(true);
+  assert.equal(hasAcceptedOAuthPolicies(`${state}tampered`), false);
 });
 
 test('oauth state: valid state without the initiating browser cookie is rejected', async () => {
