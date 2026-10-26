@@ -7,6 +7,7 @@ import {
   clearAuthCookies,
   createAuthSession,
   refreshAuthSession,
+  refreshNativeAuthSession,
   revokeAuthSession,
 } from '../utils/authSession.js';
 import { REFRESH_COOKIE, SESSION_COOKIE } from '../utils/cookies.js';
@@ -120,7 +121,7 @@ test('access-token signing failure does not leave an orphan auth session', async
   }
 });
 
-test('refresh tokens rotate once and reuse revokes the session', async () => {
+test('cookie and native refresh tokens rotate and reuse revokes the session', async () => {
   const original = {
     create: AuthSession.create,
     findOne: AuthSession.findOne,
@@ -208,6 +209,20 @@ test('refresh tokens rotate once and reuse revokes the session', async () => {
     assert.notEqual(secondRefresh, firstRefresh);
     assert.ok(rotatedRefreshAge > 0 && rotatedRefreshAge <= 30 * 24 * 60 * 60 * 1000);
     assert.deepEqual(storedSession.usedRefreshTokenHashes, [hash(firstRefresh.split('.')[1])]);
+
+    const cookieCountBeforeNativeRefresh = cookies.length;
+    const nativeRotation = await refreshNativeAuthSession(secondRefresh);
+    assert.ok(nativeRotation.token);
+    assert.ok(nativeRotation.refreshToken);
+    assert.notEqual(nativeRotation.refreshToken, secondRefresh);
+    const nativeClaims = verifyToken(nativeRotation.token);
+    assert.equal(nativeClaims.sid, accessClaims.sid);
+    assert.equal(nativeClaims.exp - nativeClaims.iat, 15 * 60);
+    assert.equal(cookies.length, cookieCountBeforeNativeRefresh);
+    assert.deepEqual(storedSession.usedRefreshTokenHashes, [
+      hash(firstRefresh.split('.')[1]),
+      hash(secondRefresh.split('.')[1]),
+    ]);
 
     await assert.rejects(
       refreshAuthSession(

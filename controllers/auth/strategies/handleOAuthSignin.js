@@ -1,6 +1,6 @@
 import User from '../../../models/User.model.js';
 import AppError from '../../../utils/AppError.js';
-import { createAuthSession } from '../../../utils/authSession.js';
+import { createAuthSessionForClient } from '../../../utils/authSession.js';
 
 /**
  * Verify a Google access token directly with Google.
@@ -54,7 +54,7 @@ async function verifyOAuthToken(provider, token) {
  * @returns {Promise<{ user: object, token: string, message: string }>}
  * @throws {AppError} 401 when the token cannot be verified.
  */
-export const handleOAuthSignin = async (payload, res) => {
+export const handleOAuthSignin = async (payload, res, { native = false } = {}) => {
   const { oauthProvider: provider, oauthToken: token } = payload;
 
   let profile;
@@ -81,9 +81,10 @@ export const handleOAuthSignin = async (payload, res) => {
     created = true;
   }
 
+  const session = await createAuthSessionForClient(user, res, native);
   return {
     user,
-    token: await createAuthSession(user, res),
+    ...session,
     message: `Signed in with ${provider}${created ? ' — account created' : ''}`,
   };
 };

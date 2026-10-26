@@ -1,6 +1,6 @@
 import User from '../../../models/User.model.js';
 import AppError from '../../../utils/AppError.js';
-import { createAuthSession } from '../../../utils/authSession.js';
+import { createAuthSessionForClient } from '../../../utils/authSession.js';
 
 /**
  * Passwordless (OTP) sign-in strategy.
@@ -18,7 +18,7 @@ import { createAuthSession } from '../../../utils/authSession.js';
  * @returns {Promise<{ user: object, token: string, message: string }>}
  * @throws {AppError} 500 when the OTP verification service is unconfigured in production.
  */
-export const handleNoPasswordSignin = async (payload, res) => {
+export const handleNoPasswordSignin = async (payload, res, { native = false } = {}) => {
   const { email, phone } = payload;
 
   /**
@@ -53,9 +53,10 @@ export const handleNoPasswordSignin = async (payload, res) => {
     created = true;
   }
 
+  const session = await createAuthSessionForClient(user, res, native);
   return {
     user,
-    token: await createAuthSession(user, res),
+    ...session,
     message: `Signed in successfully with OTP${created ? ' — account created' : ''}.`,
   };
 };

@@ -173,3 +173,26 @@ only be enabled for local development with `ENABLE_DEV_OTP_STUB=true`.
 
 The existing JSON `/api/signin` OAuth strategy remains available
 for clients that already send a Google access token directly.
+
+### Native mobile clients
+
+Native clients send `X-ENRG-Client: mobile` to `/api/signup` or `/api/signin`.
+Only those requests include the opaque refresh token in `data.refreshToken`;
+website requests continue to receive the existing HttpOnly cookies and the
+existing `data.token` access token. Native clients should store the refresh
+token in platform secure storage and keep access JWTs short-lived (15 minutes).
+
+`POST /api/native/refresh` accepts `{ "refreshToken": "…" }` and returns the
+rotated `{ "token": "…", "refreshToken": "…" }` pair. Refresh requests must be
+serialized; reuse protection and session revocation are shared with browser
+sessions. `POST /api/native/logout` accepts the refresh token and revokes its
+session. These endpoints do not change cookie-based `/api/refresh` or logout.
+
+For Expo Google sign-in, register `NATIVE_OAUTH_REDIRECT_URI` as a separate
+Google OAuth callback on the API, for example
+`https://<api-host>/auth/google/native/callback`. `/auth/google/native` starts
+the flow. The API validates one-use state, then redirects to
+`MOBILE_OAUTH_REDIRECT_URI` (default `enrg://auth/callback`) with a short-lived,
+single-use `code`. The app exchanges that code at `POST /api/native/exchange`
+for the user, access JWT, and refresh token. The access and refresh credentials
+are never placed in the deep-link URL. Configure the same app scheme in Expo.

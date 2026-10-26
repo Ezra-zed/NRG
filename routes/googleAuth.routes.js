@@ -7,8 +7,11 @@ import {
   logout,
   startGoogleLogin,
   validateGoogleCallbackState,
+  finishNativeGoogleLogin,
 } from '../controllers/auth/googleOAuth.controller.js';
 import AppError from '../utils/AppError.js';
+import { createNativeOAuthState } from '../utils/authSession.js';
+import { getNativeGoogleCallbackUrl } from '../utils/nativeClient.js';
 
 const router = Router();
 
@@ -75,6 +78,36 @@ router.get('/google/callback', validateGoogleCallbackState, (req, res, next) => 
       hasDisplayName: Boolean(profile.displayName),
     });
     return finishGoogleLogin(profile, req, res).catch(next);
+  })(req, res, next);
+});
+
+// Native Google OAuth uses a registered API callback and redirects a short-lived,
+// single-use code to the app. The access/refresh credentials never enter the URL.
+router.get('/google/native', async (req, res, next) => {
+  try {
+    configureGoogleStrategy();
+    const state = await createNativeOAuthState(req.query.acceptPolicies === 'true');
+    passport.authenticate('google', {
+      session: false,
+      callbackURL: getNativeGoogleCallbackUrl(),
+      state,
+      scope: ['profile', 'email'],
+    })(req, res, next);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/google/native/callback', (req, res, next) => {
+  configureGoogleStrategy();
+  passport.authenticate('google', {
+    session: false,
+    callbackURL: getNativeGoogleCallbackUrl(),
+    state: false,
+  }, (error, profile) => {
+    if (error) return next(error);
+    if (!profile) return next(new AppError('Google sign-in failed.', 401, true, 'GOOGLE_OAUTH_FAILED'));
+    return finishNativeGoogleLogin(profile, req, res).catch(next);
   })(req, res, next);
 });
 

@@ -9,6 +9,9 @@ import {
   createAuthSession,
   refreshAuthSession,
   revokeAuthSession,
+  consumeNativeOAuthState,
+  createNativeAuthSession,
+  createNativeOAuthExchangeCode,
 } from '../../utils/authSession.js';
 import {
   createOAuthState,
@@ -18,6 +21,7 @@ import {
   STATE_MAX_AGE_MS,
 } from '../../utils/oauthState.js';
 import { DEFAULT_PRODUCTION_FRONTEND_URL } from '../../utils/securityConfig.js';
+import { getMobileAuthRedirectUri } from '../../utils/nativeClient.js';
 
 const LEGACY_PRODUCTION_FRONTEND_URL = 'https://enrg-front-end-uyv.vercel.app';
 const GOOGLE_POLICY_COOKIE = 'nrg_google_policy_consent';
@@ -162,6 +166,46 @@ export const finishGoogleLogin = async (profile, req, res) => {
     message: `Signed in with Google${created ? ' — account created' : ''}`,
     error: null,
   });
+};
+
+/** Finish the additive native Google flow and redirect only a one-use code. */
+export const finishNativeGoogleLogin = async (profile, req, res) => {
+  const state = await consumeNativeOAuthState(req.query.state);
+  if (!state) throw new AppError('Invalid or expired native OAuth state.', 403, true, 'INVALID_OAUTH_STATE');
+
+  const emailProfile = profile.emails?.[0];
+  const email = emailProfile?.value?.toLowerCase();
+  const emailVerified = emailProfile?.verified === true
+    || profile._json?.email_verified === true
+    || profile._json?.email_verified === 'true';
+  if (!profile.id || !email || !emailVerified) {
+    throw new AppError('Google did not return a usable profile.', 401);
+  }
+
+  const oauthId = `google-${profile.id}`;
+  let user = await User.findOne({ $or: [{ oauthId }, { email }] });
+  if (!user) {
+    if (!state.acceptPolicies) {
+      throw new AppError('You must accept the Terms & Conditions and Privacy Policy before creating an account.', 400, true, 'POLICY_CONSENT_REQUIRED');
+    }
+    user = await User.create({
+      role: 'user',
+      name: profile.displayName || email,
+      email,
+      authProvider: 'O-auth',
+      oauthId,
+      policyConsent: { accepted: true, acceptedAt: new Date(), termsVersion: process.env.TERMS_VERSION || '1.0', privacyVersion: process.env.PRIVACY_VERSION || '1.0' },
+    });
+  } else if (!user.oauthId) {
+    user.oauthId = oauthId;
+    await user.save();
+  }
+
+  const session = await createNativeAuthSession(user);
+  const code = await createNativeOAuthExchangeCode(session.sessionId);
+  const redirect = new URL(getMobileAuthRedirectUri());
+  redirect.searchParams.set('code', code);
+  return res.redirect(redirect.toString());
 };
 
 /**

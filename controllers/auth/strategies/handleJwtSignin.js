@@ -1,6 +1,6 @@
 import User from '../../../models/User.model.js';
 import AppError from '../../../utils/AppError.js';
-import { createAuthSession } from '../../../utils/authSession.js';
+import { createAuthSessionForClient } from '../../../utils/authSession.js';
 
 /**
  * JWT-auth (email + password) sign-in strategy.
@@ -16,7 +16,7 @@ import { createAuthSession } from '../../../utils/authSession.js';
  * @returns {Promise<{ user: object, token: string, message: string }>}
  * @throws {AppError} 401 for any credential problem.
  */
-export const handleJwtSignin = async (payload, res) => {
+export const handleJwtSignin = async (payload, res, { native = false } = {}) => {
   const { email, password } = payload;
 
   // Pull the password hash (hidden by default via select:false) for the check.
@@ -31,9 +31,10 @@ export const handleJwtSignin = async (payload, res) => {
     throw new AppError('Invalid email or password.', 401);
   }
 
+  const session = await createAuthSessionForClient(user, res, native);
   return {
     user,
-    token: await createAuthSession(user, res),
+    ...session,
     message: 'Signed in successfully with email & password.',
   };
 };
