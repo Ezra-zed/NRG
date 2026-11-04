@@ -83,3 +83,15 @@ export const signinSchema = Joi.object({
   }).messages({
     'any.custom': 'no-password requires either email or phone',
   });
+
+export const forgotPasswordSchema = Joi.object({
+  email: emailSchema.required(),
+});
+
+export const resetPasswordSchema = Joi.object({
+  token: Joi.string().hex().length(64).required(),
+  password: Joi.string().min(6).max(128).required().messages({
+    'string.min': 'Password must be at least 6 characters',
+    'string.max': 'Password must be at most 128 characters',
+  }),
+});

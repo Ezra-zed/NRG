@@ -55,6 +55,8 @@ metadata are stored in MongoDB.
 | `GET  /api/home?type=on-grid\|off-grid\|hybrid-grid`     | Home product collections per solution type    |
 | `POST /api/signup`                                       | Registration for customer / installer company / solar seller company |
 | `POST /api/signin`              | Single endpoint → OAuth / JWT / no-password strategies |
+| `POST /api/forgot-password`     | Email a one-time password reset link |
+| `POST /api/reset-password`      | Set a new password using a valid reset token |
 | `POST /api/refresh`              | Rotate the refresh token and issue a new access token |
 | `POST /api/logout`               | Revoke the current session and clear auth cookies |
 | `GET  /auth/google`             | Start Google OAuth authorization-code login |
@@ -98,6 +100,15 @@ Tracking updates follow the sequential lifecycle from Project Created through
 Project Completed. Customers can read but cannot edit tracking history.
 
 ### Sign-in strategies
+
+Email/password accounts can request a password reset with
+`POST /api/forgot-password` and `{ "email": "a@b.co" }`. The API returns the
+same response whether or not a reset email is sent. The email link opens the
+frontend `/reset-password` page and expires after one hour. Submit the link's
+token and a new password to `POST /api/reset-password`; the token is single-use
+and all existing sessions are revoked after a successful reset. Configure
+`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM`, and the
+frontend URL variables in `.env` to enable delivery.
 
 ```http
 POST /api/signin

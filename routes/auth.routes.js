@@ -2,7 +2,8 @@ import { Router } from 'express';
 import Joi from 'joi';
 import { signup } from '../controllers/auth/signup.controller.js';
 import { signin } from '../controllers/auth/signin.controller.js';
-import { signupSchema, signinSchema } from '../controllers/auth/auth.schemas.js';
+import { signupSchema, signinSchema, forgotPasswordSchema, resetPasswordSchema } from '../controllers/auth/auth.schemas.js';
+import { forgotPassword, completePasswordReset } from '../controllers/auth/passwordReset.controller.js';
 import { validate } from '../middlewares/validate.middleware.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { rateLimit } from '../middlewares/rateLimit.middleware.js';
@@ -34,6 +35,8 @@ router.post('/signup', rateLimit({ max: 10 }), validate(signupSchema), asyncHand
  * strategy handlers (controllers/auth/strategies/*).
  */
 router.post('/signin', rateLimit({ max: 20 }), validate(signinSchema), asyncHandler(signin));
+router.post('/forgot-password', rateLimit({ max: 5 }), validate(forgotPasswordSchema), asyncHandler(forgotPassword));
+router.post('/reset-password', rateLimit({ max: 10 }), validate(resetPasswordSchema), asyncHandler(completePasswordReset));
 
 router.post('/refresh', rateLimit({ max: 30 }), refresh);
 router.post('/logout', logout);

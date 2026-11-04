@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { DEFAULT_PRODUCTION_FRONTEND_URL } from '../utils/securityConfig.js';
 
 let transport;
 const getTransport = () => {
@@ -30,5 +31,22 @@ export const sendMaintenanceReminder = async ({ to, projectId, completedAt }) =>
     subject: `Your solar installation is ${months} months old — time for maintenance`,
     text: `Your solar installation was completed on ${when}. ${months} months have passed, so we recommend cleaning your panels and checking the system. Request maintenance: ${actionUrl}`,
     html: `<p>Your solar installation was completed on <strong>${when}</strong>. ${months} months have passed, so it may be time to clean your panels and check the system.</p><p><a href="${actionUrl}" style="display:inline-block;padding:12px 20px;background:#1f584d;color:#fff;text-decoration:none;border-radius:24px">Request Maintenance</a></p>`,
+  });
+};
+
+export const sendPasswordResetEmail = async ({ to, token }) => {
+  const base = process.env.NODE_ENV === 'production'
+    ? process.env.PRODUCTION_FRONTEND_URL || process.env.FRONTEND_URL || DEFAULT_PRODUCTION_FRONTEND_URL
+    : process.env.LOCAL_FRONTEND_URL || process.env.FRONTEND_URL || `http://localhost:${process.env.FRONTEND_PORT || 3000}`;
+  const resetUrl = new URL('/reset-password', base);
+  resetUrl.searchParams.set('token', token);
+  const actionUrl = resetUrl.toString();
+
+  await getTransport().sendMail({
+    from: process.env.EMAIL_FROM || process.env.SMTP_USER,
+    to,
+    subject: 'Reset your ENRG password',
+    text: `We received a request to reset your ENRG password. Use this link within 1 hour to choose a new password: ${actionUrl}\n\nIf you did not request this, you can ignore this email.`,
+    html: `<p>We received a request to reset your ENRG password.</p><p><a href="${actionUrl}" style="display:inline-block;padding:12px 20px;background:#1f584d;color:#fff;text-decoration:none;border-radius:24px">Reset password</a></p><p>This link expires in 1 hour. If you did not request this, you can ignore this email.</p>`,
   });
 };
