@@ -10,6 +10,8 @@ const INVALID_RESET_TOKEN = 'This password reset link is invalid or has expired.
 
 export const hashPasswordResetToken = (token) => createHash('sha256').update(token).digest('hex');
 
+const normalizeEmail = (email) => typeof email === 'string' ? email.trim().toLowerCase() : email;
+
 export const requestPasswordReset = async (
   { email },
   {
@@ -20,7 +22,8 @@ export const requestPasswordReset = async (
     generateToken = () => randomBytes(32).toString('hex'),
   } = {},
 ) => {
-  const user = await userModel.findOne({ email }).select('+password');
+  const normalizedEmail = normalizeEmail(email);
+  const user = await userModel.findOne({ email: normalizedEmail }).select('+password');
   if (!user || user.authProvider !== 'JWT-auth' || !user.password) return;
 
   const token = generateToken();
@@ -43,8 +46,9 @@ export const resetPassword = async (
   } = {},
 ) => {
   const usedAt = now();
+  const normalizedToken = typeof token === 'string' ? token.trim() : token;
   const resetGrant = await tokenModel.findOneAndDelete({
-    tokenHash: hashPasswordResetToken(token),
+    tokenHash: hashPasswordResetToken(normalizedToken),
     expiresAt: { $gt: usedAt },
   });
   if (!resetGrant) throw new AppError(INVALID_RESET_TOKEN, 400, true, 'INVALID_PASSWORD_RESET_TOKEN');

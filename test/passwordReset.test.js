@@ -10,6 +10,45 @@ import {
 
 const fixedNow = () => new Date('2026-11-02T18:00:00.000Z');
 
+test('password reset requests normalize emails before lookup and send a one-hour link', async () => {
+  const token = 'a'.repeat(64);
+  const user = { _id: 'user-1', email: 'person@example.com', authProvider: 'JWT-auth', password: 'stored-hash' };
+  const emailLookup = ' Person@Example.com ';
+  let savedToken;
+  let sentEmail;
+  const userModel = {
+    findOne(query) {
+      assert.deepEqual(query, { email: user.email });
+      return { select: async (fields) => {
+        assert.equal(fields, '+password');
+        return user;
+      } };
+    },
+  };
+  const tokenModel = {
+    async findOneAndUpdate(query, update, options) {
+      assert.deepEqual(query, { userId: user._id });
+      assert.deepEqual(options, { upsert: true, setDefaultsOnInsert: true });
+      savedToken = update.$set;
+    },
+  };
+
+  await requestPasswordReset(
+    { email: emailLookup },
+    {
+      userModel,
+      tokenModel,
+      sendEmail: async (message) => { sentEmail = message; },
+      now: fixedNow,
+      generateToken: () => token,
+    },
+  );
+
+  assert.equal(savedToken.tokenHash, hashPasswordResetToken(token));
+  assert.equal(savedToken.expiresAt.toISOString(), '2026-11-02T19:00:00.000Z');
+  assert.deepEqual(sentEmail, { to: user.email, token });
+});
+
 test('password reset requests persist only a hash and send a one-hour link', async () => {
   const token = 'a'.repeat(64);
   const user = { _id: 'user-1', email: 'person@example.com', authProvider: 'JWT-auth', password: 'stored-hash' };
