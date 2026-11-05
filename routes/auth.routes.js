@@ -9,6 +9,7 @@ import asyncHandler from '../utils/asyncHandler.js';
 import { rateLimit } from '../middlewares/rateLimit.middleware.js';
 import { refresh, logout } from '../controllers/auth/googleOAuth.controller.js';
 import { exchangeNative, logoutNative, refreshNative } from '../controllers/auth/nativeAuth.controller.js';
+import { sendError } from '../utils/apiResponse.js';
 
 /**
  * Auth routes — signup & the multi-method signin endpoint.
@@ -35,6 +36,13 @@ router.post('/signup', rateLimit({ max: 10 }), validate(signupSchema), asyncHand
  * strategy handlers (controllers/auth/strategies/*).
  */
 router.post('/signin', rateLimit({ max: 20 }), validate(signinSchema), asyncHandler(signin));
+router.get('/forgot-password', (req, res) => {
+	res.set('Allow', 'POST');
+	sendError(res, 405, 'Use POST /api/forgot-password to request a password reset.', {
+		method: req.method,
+		url: req.originalUrl,
+	});
+});
 router.post('/forgot-password', rateLimit({ max: 5 }), validate(forgotPasswordSchema), asyncHandler(forgotPassword));
 router.post('/reset-password', rateLimit({ max: 10 }), validate(resetPasswordSchema), asyncHandler(completePasswordReset));
 
